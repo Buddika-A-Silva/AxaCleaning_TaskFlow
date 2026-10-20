@@ -52,11 +52,13 @@ Synthetic local credentials (only in the local seeded Supabase instance):
 
 ## GitHub repository and Pages deployment
 
-Keep the repository private, enable branch protection and require CI checks. In **Settings → Pages → Build and deployment**, select **GitHub Actions** as the source (not “Deploy from a branch”). This one-time setting is required; the workflow does not request an administrator PAT to change repository settings. A branch-based Pages build can serve the raw TypeScript entry point instead of the compiled Vite application. Add these repository/environment variables (all are public client configuration, not secrets):
+Keep the repository private, enable branch protection and require CI checks. In **Settings → Pages → Build and deployment**, select **GitHub Actions** as the source (not “Deploy from a branch”). This one-time setting is required; the workflow does not request an administrator PAT to change repository settings. A branch-based Pages build can serve the raw TypeScript entry point instead of the compiled Vite application. Add these repository-level Actions variables (or secrets; variables are recommended) — build jobs do not read environment-scoped values unless assigned to an environment:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 - `VITE_BASE_PATH` (the workflow derives the repository/user-site value if omitted)
+
+The Pages workflow validates that the URL and anon key are present and fails rather than publishing an app with no backend configuration. These two client values are included in the public bundle; the anon key is not a secret.
 
 For an organization/user site (`https://OWNER.github.io/`), set `VITE_BASE_PATH=/`. For a project site (`https://OWNER.github.io/REPOSITORY/`), set `VITE_BASE_PATH=/REPOSITORY/` including both slashes. Push to `main` or run the workflow manually. GitHub Pages publishes only `dist/`; `404.html` supports direct SPA-route loads. Keep Pages visibility appropriate for your GitHub plan and remember that the client bundle is public even when its source repository is private.
 
