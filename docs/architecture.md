@@ -1,5 +1,7 @@
 # Architecture and decisions
 
+**Product:** AXA Cleaning task, budget, and expense tracker. **Product by Arctic Technologies.**
+
 ## ADR-001 — Static client, managed identity/data
 
 **Decision:** Build React/TypeScript with Vite and deploy only compiled static assets to GitHub Pages. Keep the source repository private. Supabase Auth, PostgreSQL, private Storage and Edge Functions are the only production runtime/data services.

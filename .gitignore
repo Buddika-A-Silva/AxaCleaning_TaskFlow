@@ -8,6 +8,7 @@ test-results/
 !.env.example
 .supabase/
 supabase/.temp/
+supabase/.temp/
 .vercel/
 .DS_Store
 Thumbs.db

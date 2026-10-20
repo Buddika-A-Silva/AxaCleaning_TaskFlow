@@ -56,7 +56,15 @@ Deno.serve(async (request: Request) => {
       }
       return response({ id });
     }
-    const { data: invitation, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, { data: { username: username.toLowerCase(), full_name: full_name.trim() } });
+    const appOrigin = (Deno.env.get('APP_ORIGIN') ?? 'https://buddika-a-silva.github.io').replace(/\/$/, '');
+    const inviteRedirectUrl = Deno.env.get('INVITE_REDIRECT_URL') ?? `${appOrigin}/AxaCleaning_TaskFlow/reset-password`;
+    let redirectOrigin: string;
+    try { redirectOrigin = new URL(inviteRedirectUrl).origin; } catch { return response({ error: 'Invitation redirect is not configured' }, 500); }
+    if (redirectOrigin !== appOrigin) return response({ error: 'Invitation redirect is not configured' }, 500);
+    const { data: invitation, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
+      redirectTo: inviteRedirectUrl,
+      data: { username: username.toLowerCase(), full_name: full_name.trim() },
+    });
     const invitedUser = invitation.user;
     if (inviteError || !invitedUser) return response({ error: 'Could not create invitation' }, 409);
     const { error: profileError } = await admin.from('profiles').insert({ id: invitedUser.id, organisation_id: actor.organisation_id, username: username.toLowerCase(), full_name: full_name.trim(), recovery_email, phone, employee_id, department, role, language: language === 'ro' ? 'ro' : 'en', timezone: timezone ?? 'Europe/Bucharest', is_active: true, must_reset_password: true, can_manage_users: actor.role === 'super_admin' && role === 'assigner' && Boolean(can_manage_users), created_by: actor.id });

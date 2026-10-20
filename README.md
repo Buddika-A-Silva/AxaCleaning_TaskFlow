@@ -1,6 +1,6 @@
 # AXA Cleaning
 
-Bilingual (English/Romanian) task, budget and expense tracking for AXA Cleaning. The AXA Cleaning logo in `src/LOGO.jpeg` is used across the app, as the favicon, and as the installed PWA icon. The browser runs only the compiled Vite application; Supabase owns identity, authorization, PostgreSQL data, private proof storage and privileged operations.
+Bilingual (English/Romanian) task, budget and expense tracking for AXA Cleaning. **Product by Arctic Technologies.** The AXA Cleaning logo in `src/LOGO.jpeg` is used across the app, as the favicon, and as the installed PWA icon. The browser runs only the compiled Vite application; Supabase owns identity, authorization, PostgreSQL data, private proof storage and privileged operations.
 
 ## Security boundary
 
@@ -32,9 +32,30 @@ Synthetic local credentials (only in the local seeded Supabase instance):
 
 **Never deploy these users, passwords, or seeded tasks to production.** The seed script is not called by CI or Pages deployment.
 
-## Invite or create production users
+## Production sign-in and user invitations
 
-There is no public registration. After the first Super Admin is securely bootstrapped, sign in to AXA Cleaning and open **People → Invite user**. Choose Assigner (Super Admin only) or End User, enter the user's name, unique username, and email, then send the invitation. Supabase Auth emails a secure invitation so the user can set their own password; TaskFlow never displays or stores it. New users must complete password setup before accessing tasks. A Super Admin configures an Assigner's permitted end-user scope under **People → Manage Assigner scope**. Assigners can manage end users only when that capability is explicitly granted to their profile. Deactivate accounts instead of deleting them. The sample accounts above are local-development fixtures only and are not real production accounts.
+Signing in to GitHub or Supabase Dashboard does **not** create an AXA Cleaning app account. The production `profiles` table was verified empty, so the app correctly rejects sign-ins until the first app Super Admin is provisioned.
+
+### One-time: bootstrap the first Super Admin
+
+1. In Supabase Dashboard, select the **AxaCleaning_TaskFlow** project → **Authentication → Users** → **Add user / Invite user**. Invite the real person who will be the first Super Admin using their real email. Do not create a public/demo login or use synthetic `.taskflow.local` accounts in production.
+2. Before they accept the email, open **SQL Editor → New query**. Open [docs/bootstrap-first-admin.sql](docs/bootstrap-first-admin.sql), replace the email, username, and full name placeholders with that same invitee's details, paste the SQL into the editor, and run it once. It creates/uses the AXA Cleaning organisation and links the invited Auth identity to a `super_admin` profile with first-login password reset required. It creates no password.
+3. If the invitee opens the email before the SQL profile is inserted, have them wait a moment and retry the invite link after the SQL succeeds. They can then sign in with the invited email and their password, finish the required password reset, and reach the app.
+
+The SQL is intentionally a manual owner-only bootstrap rather than an unauthenticated endpoint. Never publish a password, service key, or bootstrap credential. Do not rerun it once an active Super Admin exists; later accounts must use the invitation UI.
+
+### After the first Super Admin can sign in
+
+1. Open **People → Invite user**. Choose **Assigner** (Super Admin only) or **End User**, enter the name, unique lowercase username, and recovery/invitation email, then select the language and send the invitation.
+2. The Edge Function creates the Supabase Auth invitation and matching organisation-scoped profile. The user follows the email link and chooses their own password. TaskFlow never receives, displays, or stores that password.
+3. A Super Admin must configure each Assigner's end-user scope in **People → Manage Assigner scope** before that Assigner can create tasks. To let an Assigner invite/manage end users, grant `can_manage_users` on that Assigner profile through Super Admin account administration. End users see only tasks assigned to them.
+4. Use **Deactivate** to disable an account; never remove/demote the final active Super Admin.
+
+### Invitation link configuration
+
+In Supabase **Authentication → URL Configuration**, set the Site URL to `https://buddika-a-silva.github.io/AxaCleaning_TaskFlow/` and allow `https://buddika-a-silva.github.io/AxaCleaning_TaskFlow/**` as a redirect URL. In Edge Function Secrets, set `INVITE_REDIRECT_URL=https://buddika-a-silva.github.io/AxaCleaning_TaskFlow/reset-password` (full project-site path). Keep `APP_ORIGIN=https://buddika-a-silva.github.io` as the origin only for CORS. Redeploy the `admin-user-upsert` function after changing its code or invitation redirect configuration.
+
+The two `tester.*@taskflow.local` users above are synthetic local-development fixtures for testing access isolation. They are not created in production and must never be deployed there. For production acceptance testing, invite two real, controlled test mailboxes after the first Super Admin exists. Never put reusable sample credentials on the public Pages site.
 
 ## Quality checks
 
