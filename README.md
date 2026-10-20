@@ -56,7 +56,7 @@ Keep the repository private, enable branch protection and require CI checks. In 
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
-- `VITE_BASE_PATH`
+- `VITE_BASE_PATH` (the workflow derives the repository/user-site value if omitted)
 
 For an organization/user site (`https://OWNER.github.io/`), set `VITE_BASE_PATH=/`. For a project site (`https://OWNER.github.io/REPOSITORY/`), set `VITE_BASE_PATH=/REPOSITORY/` including both slashes. Push to `main` or run the workflow manually. GitHub Pages publishes only `dist/`; `404.html` supports direct SPA-route loads. Keep Pages visibility appropriate for your GitHub plan and remember that the client bundle is public even when its source repository is private.
 

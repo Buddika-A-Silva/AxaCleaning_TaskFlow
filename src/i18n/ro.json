@@ -111,7 +111,7 @@
   "retry": "Încearcă din nou",
   "loading": "Se încarcă spațiul de lucru...",
   "backendMissing": "Conectează proiectul Supabase pentru a începe.",
-  "backendMissingHint": "Adaugă URL-ul proiectului și cheia publică anon în mediul local, apoi repornește aplicația.",
+  "backendMissingHint": "Solicită administratorului să finalizeze conectarea securizată la Supabase. Autentificarea rămâne indisponibilă până la configurare.",
   "notConfigured": "Backend neconfigurat",
   "expenseTotal": "Total cheltuieli",
   "addLine": "Adaugă linie de cheltuială",

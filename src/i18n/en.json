@@ -111,7 +111,7 @@
   "retry": "Try again",
   "loading": "Loading your workspace...",
   "backendMissing": "Connect your Supabase project to get started.",
-  "backendMissingHint": "Add the project URL and public anon key to your local environment, then restart the app.",
+  "backendMissingHint": "Ask your administrator to finish the secure Supabase connection. Sign-in remains unavailable until it is configured.",
   "notConfigured": "Backend not configured",
   "expenseTotal": "Expense total",
   "addLine": "Add expense line",
