@@ -14,7 +14,7 @@
 
 - Separate Supabase projects and credentials for development, test and production.
 - Turn off public signup; set strong password policy, email confirmations, redirect allow-list, session policy, auth rate limits and MFA for administrative accounts.
-- Restrict `APP_ORIGIN` to the deployed Pages origin (and local origins only in development). Set function CORS explicitly; do not use wildcard production origins.
+- Set `APP_ORIGIN` to exactly `https://buddika-a-silva.github.io` for production (origin only; no path). Set function CORS explicitly; do not use wildcard production origins. The current functions default to this production origin if the secret is absent.
 - Use custom SMTP and verify invitation/password-reset redirects. Supabase Auth is the sole password system.
 - Store `SUPABASE_SERVICE_ROLE_KEY` only in Supabase Edge Function secrets. Rotate it after suspected exposure. Never set it in `VITE_*`, GitHub Pages, Git or Actions artifacts.
 - Keep the bucket private; review allowed MIME/size configuration and use malware scanning/retention controls before accepting external production files.

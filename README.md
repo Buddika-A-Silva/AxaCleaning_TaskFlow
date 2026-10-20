@@ -45,10 +45,12 @@ Synthetic local credentials (only in the local seeded Supabase instance):
 1. Create separate Supabase development, test and production projects. Do not import the local seed into production.
 2. Configure Auth email/password, password policy (12+ characters), email delivery, redirect allow-list, session duration, abuse protection and MFA requirements for privileged roles. Disable public sign-up.
 3. Link the CLI to the intended project and apply reviewed migrations. Verify all tables have RLS enabled, the anonymous role has no business grants, and `task-proofs` is private with the 10 MiB MIME allow-list.
-4. Add `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, a cryptographically random `LOGIN_RATE_LIMIT_SALT` of at least 32 characters, and a tightly configured `APP_ORIGIN` as Supabase Function secrets. Never add the service-role key or rate-limit salt to GitHub variables or `VITE_*` values.
+4. Add `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, a cryptographically random `LOGIN_RATE_LIMIT_SALT` of at least 32 characters, and `APP_ORIGIN=https://buddika-a-silva.github.io` as Supabase Function secrets. `APP_ORIGIN` is the site origin only—no repository path or trailing slash. The function has the same production-origin fallback, but explicitly setting the secret is recommended. Never add the service-role key or rate-limit salt to GitHub variables or `VITE_*` values.
 5. Deploy `username-login` and `admin-user-upsert`; configure email invitation redirects. Configure Auth rate-limiting and monitor denied requests.
 6. Bootstrap the first Super Admin through a reviewed, one-time server-side process using Supabase dashboard/SQL with restricted operator access. Create the organisation and matching profile; do not expose this bootstrap secret or script to the browser. Verify there is at least one active Super Admin before handoff.
 7. Configure storage retention/backup and test proof restore and private signed-link access.
+
+After changing Edge Function code, redeploy both functions to the same project (for example with `supabase functions deploy username-login --project-ref YOUR_PROJECT_REF` and `supabase functions deploy admin-user-upsert --project-ref YOUR_PROJECT_REF`). CLI deployment requires an authenticated Supabase CLI session; never paste an access token into chat. Check the browser Network tab for a successful OPTIONS preflight and a generic login response before conducting account tests.
 
 ## GitHub repository and Pages deployment
 
