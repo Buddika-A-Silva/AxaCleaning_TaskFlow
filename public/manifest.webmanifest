@@ -1,11 +1,11 @@
 {
-  "name": "TaskFlow SME",
-  "short_name": "TaskFlow",
-  "description": "Secure task, budget and expense tracking for teams.",
+  "name": "AXA Cleaning",
+  "short_name": "AXA Cleaning",
+  "description": "Secure task, budget and expense tracking for AXA Cleaning.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f7f8fc",
   "theme_color": "#f7f8fc",
-  "icons": [{ "src": "taskflow-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+  "icons": [{ "src": "axa-cleaning-logo.jpeg", "sizes": "1024x1024", "type": "image/jpeg", "purpose": "any maskable" }]
 }

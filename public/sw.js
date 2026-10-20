@@ -1,5 +1,5 @@
 const CACHE_NAME = 'taskflow-shell-v1';
-const SHELL_URLS = ['./', './manifest.webmanifest', './taskflow-icon.svg'];
+const SHELL_URLS = ['./', './manifest.webmanifest', './axa-cleaning-logo.jpeg'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(SHELL_URLS)).then(() => self.skipWaiting()));

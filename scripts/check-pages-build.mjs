@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 
 const html = await readFile('dist/index.html', 'utf8');
 const fallback = await readFile('dist/404.html', 'utf8');
@@ -12,3 +12,8 @@ const escapedBase = normalizedBase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const assetPattern = new RegExp(`(?:src|href)="${escapedBase}assets/`);
 if (!assetPattern.test(html) || !assetPattern.test(fallback)) throw new Error(`Pages HTML must reference compiled assets under the configured base path ${normalizedBase}.`);
 if (!html.includes(`${normalizedBase}manifest.webmanifest`) || !fallback.includes(`${normalizedBase}manifest.webmanifest`)) throw new Error('Pages manifest URL does not match the configured base path.');
+if (!html.includes('<title>AXA Cleaning</title>') || !html.includes(`${normalizedBase}axa-cleaning-logo.jpeg`)) throw new Error('Pages document title or favicon does not use AXA Cleaning branding.');
+const manifest = await readFile('dist/manifest.webmanifest', 'utf8');
+if (!manifest.includes('"name": "AXA Cleaning"') || !manifest.includes('axa-cleaning-logo.jpeg')) throw new Error('PWA manifest does not use the AXA Cleaning logo and name.');
+await access('dist/axa-cleaning-logo.jpeg');
+process.stdout.write('AXA Cleaning logo asset is present in the Pages artifact.\n');

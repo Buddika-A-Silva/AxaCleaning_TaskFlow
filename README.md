@@ -1,6 +1,6 @@
-# TaskFlow SME
+# AXA Cleaning
 
-Bilingual (English/Romanian) task, budget and expense tracking for small and medium teams. The browser runs only the compiled Vite application; Supabase owns identity, authorization, PostgreSQL data, private proof storage and privileged operations.
+Bilingual (English/Romanian) task, budget and expense tracking for AXA Cleaning. The AXA Cleaning logo in `src/LOGO.jpeg` is used across the app, as the favicon, and as the installed PWA icon. The browser runs only the compiled Vite application; Supabase owns identity, authorization, PostgreSQL data, private proof storage and privileged operations.
 
 ## Security boundary
 
@@ -27,8 +27,14 @@ Synthetic local credentials (only in the local seeded Supabase instance):
 - Assigner: `assigner@taskflow.local` / `TaskFlowLocal2026!`
 - End User: `alex@taskflow.local` / `TaskFlowLocal2026!`
 - Romanian End User: `sam@taskflow.local` / `TaskFlowLocal2026!`
+- Test End User 1 (English): `tester.one@taskflow.local` / `TaskFlowLocal2026!`
+- Test End User 2 (Romanian): `tester.two@taskflow.local` / `TaskFlowLocal2026!`
 
 **Never deploy these users, passwords, or seeded tasks to production.** The seed script is not called by CI or Pages deployment.
+
+## Invite or create production users
+
+There is no public registration. After the first Super Admin is securely bootstrapped, sign in to AXA Cleaning and open **People → Invite user**. Choose Assigner (Super Admin only) or End User, enter the user's name, unique username, and email, then send the invitation. Supabase Auth emails a secure invitation so the user can set their own password; TaskFlow never displays or stores it. New users must complete password setup before accessing tasks. A Super Admin configures an Assigner's permitted end-user scope under **People → Manage Assigner scope**. Assigners can manage end users only when that capability is explicitly granted to their profile. Deactivate accounts instead of deleting them. The sample accounts above are local-development fixtures only and are not real production accounts.
 
 ## Quality checks
 

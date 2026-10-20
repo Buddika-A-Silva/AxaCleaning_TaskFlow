@@ -2,6 +2,9 @@ import { expect, test } from '@playwright/test';
 
 test('login is bilingual and does not offer public registration', async ({ page }) => {
   await page.goto('/');
+  await expect(page).toHaveTitle('AXA Cleaning');
+  await expect(page.getByText('AXA Cleaning', { exact: true }).first()).toBeVisible();
+  await expect(page.locator('.brand-logo-image').first()).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
   await expect(page.getByText('Accounts are provided by your organisation administrator.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Switch language to Romanian' })).toBeVisible();
