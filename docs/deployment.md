@@ -4,6 +4,8 @@
 
 Use distinct Supabase development, test and production projects. Apply reviewed SQL migrations with the Supabase CLI in a controlled operator session; the Pages workflow does not migrate databases. Keep `APP_ORIGIN`, Auth redirect allow-list and CORS origins consistent for each environment.
 
+Before the first workflow deployment, open repository **Settings → Pages → Build and deployment** and select **GitHub Actions** as the source. A branch-based Pages build can serve the raw `src/main.tsx` entry point rather than the compiled application. The deployment workflow intentionally does not carry a repository-admin token to change Pages settings.
+
 Set GitHub Pages variables `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and `VITE_BASE_PATH` in the selected environment. They are included in the public static bundle; the URL and anon key are publishable identifiers, not server secrets. Never configure the service-role key in GitHub.
 
 ### Site base paths

@@ -7,8 +7,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -17,16 +15,42 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+    outputs:
+      base_path: ${{ steps.base-path.outputs.value }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
+        id: pages
+      - name: Resolve Pages base path
+        id: base-path
+        env:
+          CONFIGURED_BASE_PATH: ${{ vars.VITE_BASE_PATH }}
+          PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+          REPOSITORY: ${{ github.event.repository.name }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          if [ -n "$CONFIGURED_BASE_PATH" ]; then
+            BASE_PATH="$CONFIGURED_BASE_PATH"
+          elif [ -n "$PAGES_BASE_PATH" ]; then
+            BASE_PATH="$PAGES_BASE_PATH"
+          elif [ "$REPOSITORY" = "$OWNER.github.io" ]; then
+            BASE_PATH="/"
+          else
+            BASE_PATH="/$REPOSITORY/"
+          fi
+          case "$BASE_PATH" in
+            /*) ;;
+            *) BASE_PATH="/$BASE_PATH" ;;
+          esac
+          if [ "$BASE_PATH" != "/" ]; then BASE_PATH="${BASE_PATH%/}/"; fi
+          echo "value=$BASE_PATH" >> "$GITHUB_OUTPUT"
+          echo "Using Vite base path: $BASE_PATH"
       - run: npm ci
       - run: npm run check:i18n
       - run: npm run typecheck
@@ -36,11 +60,22 @@ jobs:
       - run: npm run test:e2e
       - run: npm run build
         env:
-          VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH }}
+          VITE_BASE_PATH: ${{ steps.base-path.outputs.value }}
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
