@@ -1,0 +1,11 @@
+{
+  "name": "TaskFlow SME",
+  "short_name": "TaskFlow",
+  "description": "Secure task, budget and expense tracking for teams.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f8fc",
+  "theme_color": "#f7f8fc",
+  "icons": [{ "src": "taskflow-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

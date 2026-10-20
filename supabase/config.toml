@@ -1,0 +1,7 @@
+project_id = "taskflow-sme"
+
+[functions.username-login]
+verify_jwt = false
+
+[functions.admin-user-upsert]
+verify_jwt = true
