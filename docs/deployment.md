@@ -17,11 +17,11 @@ Set Pages to GitHub Actions, push to `main`, and check the deployment and direct
 
 ## Controlled release
 
-1. Review migration diff, RLS policies and function changes.
+1. Review migration diff, RLS policies and function changes. Apply pending additive migrations to the intended Supabase project before deploying the app or Edge Function.
 2. Run translation parity, typecheck, lint, unit tests, Playwright tests, secret scanning and dependency review.
 3. Deploy migrations to a disposable test project; run database RLS tests and manual negative authorization checks.
 4. Apply migrations to production in a reviewed maintenance window. Back up and verify the restore point first.
-5. Deploy the Pages bundle; run login, invitation, task, proof, review, export and direct-route smoke tests.
+5. Deploy the Pages bundle; run login, administrator account creation, forced first-login password reset, task, proof, review, export and direct-route smoke tests.
 6. Confirm the deploy does not contain seed users, proof assets, `.env` files or service secrets.
 
 ## Rollback

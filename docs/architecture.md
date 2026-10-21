@@ -15,7 +15,7 @@
 | Table | Purpose / security |
 |---|---|
 | `organisations` | Tenant boundary and locale/currency defaults. |
-| `profiles` | Auth-linked identity, unique username, role, language, active/reset flags; never stores passwords. |
+| `profiles` | Auth-linked identity, unique username, app access role, separate employee/manager position and reporting-manager link, language, active/reset flags; never stores passwords. |
 | `permissions` | Assigner-to-end-user scope and explicit user-management permission records. |
 | `tasks` | Assignment, priority, dates, optional `numeric` budget, currency, status and optimistic `version`. |
 | `task_status_history` | Append-only chronological transitions and reasons. |
@@ -25,7 +25,7 @@
 | `task_reviews` | Verification, return and exceptional reopen decisions. |
 | `notifications` | User-scoped in-app notices. |
 | `audit_events` | Restricted append-only sensitive-action trail. |
-| `user_invitations` | Server-created, expiring invitations; no invite token or password is persisted. |
+| `user_invitations` | Retained schema for compatibility; current account provisioning creates Auth users directly and does not send invitations. |
 
 Every table has RLS enabled. Tenant-owned rows carry `organisation_id`; business rows include actor/timestamp fields and soft-delete fields where relevant. The SQL migration creates indexes for tenant/task/role/date lookups and only grants task mutations through constrained RPC functions. `line_total` is generated from PostgreSQL numeric fields; client calculations use Decimal.js.
 
@@ -39,7 +39,9 @@ Every table has RLS enabled. Tenant-owned rows carry `organisation_id`; business
 | Expense/proof metadata | Own assigned tasks; write only while editable | Read permitted task scope | Same organisation |
 | Storage objects | Own task proof paths | Authorized task proofs | Same organisation |
 | Audit/invitations | None | None | Same organisation |
-| Roles/invites | None | End users only when profile permission allows | Server-side management |
+| Roles/user creation | None | None | Server-side management |
+
+App access is controlled by the `app_role` (`end_user` shown as **User**, `assigner`, or `super_admin` shown as **Main admin**). `job_position` and `manager_id` only describe the reporting hierarchy; they never grant permissions. A manager may report to another manager, and database validation prevents cross-organisation links, self-reporting, cycles, or demoting a manager who still has direct reports.
 
 All access is default-deny. Browser role checks are not authorization. Privileged functions resolve the bearer token, verify the active caller and tenant, validate role/scope, and audit through database triggers. Never add a service-role client to frontend code.
 

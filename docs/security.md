@@ -3,7 +3,7 @@
 ## Threat model and controls
 
 - **IDOR / cross-tenant reads:** PostgreSQL RLS predicates bind every user to the active profile organisation. Task RPCs authorize the actual assignee/reviewer and validate scope. Test direct requests as another seeded end user.
-- **Privilege escalation:** roles and invitations are written only in `admin-user-upsert` using a server-side service role, after bearer-token and actor checks. The browser has no service-role credential and direct table grants are limited.
+- **Privilege escalation:** account creation, role changes, reporting-line changes and temporary-password resets are handled only by `admin-user-upsert` using a server-side service role, after bearer-token and organisation checks. Only Main admins can manage accounts; Assigner permissions are limited to task assignment/review. Reporting positions never grant access. Random temporary passwords are returned only to the Main admin that created/reset the account and are never logged; the user must change one at first sign-in. The browser has no service-role credential and direct table grants are limited.
 - **Password/account exposure:** Supabase Auth owns password material. The app never reads passwords. The username login function maps username to identity, uses generic failures, rejects inactive accounts, and applies atomic 10-attempt/15-minute throttles to salted network and network+identifier digests. Also configure GoTrue throttling and gateway-level abuse protection.
 - **Proof disclosure:** `task-proofs` is private. Upload paths are tenant/task scoped and MIME/size checked. Signed URLs last 120 seconds and are never persisted. Do not include proof contents, URLs, reset links, tokens or passwords in audit/log output.
 - **Money tampering:** PostgreSQL `numeric` columns and generated line totals are authoritative. Expense writes are constrained by an RPC and task status. Client Decimal.js values are display/preflight only.
@@ -15,7 +15,7 @@
 - Separate Supabase projects and credentials for development, test and production.
 - Turn off public signup; set strong password policy, email confirmations, redirect allow-list, session policy, auth rate limits and MFA for administrative accounts.
 - Set `APP_ORIGIN` to exactly `https://buddika-a-silva.github.io` for production (origin only; no path). Set function CORS explicitly; do not use wildcard production origins. The current functions default to this production origin if the secret is absent.
-- Use custom SMTP and verify invitation/password-reset redirects. Supabase Auth is the sole password system.
+- Email is optional for account creation; without a real recovery email the user cannot self-serve email password recovery and an authorised admin must issue a new temporary password. Configure custom SMTP only if email-based password recovery is required. Supabase Auth is the sole password system.
 - Store `SUPABASE_SERVICE_ROLE_KEY` only in Supabase Edge Function secrets. Rotate it after suspected exposure. Never set it in `VITE_*`, GitHub Pages, Git or Actions artifacts.
 - Keep the bucket private; review allowed MIME/size configuration and use malware scanning/retention controls before accepting external production files.
 - GitHub Pages provides static hosting and cannot set arbitrary response headers. Add CSP, HSTS, frame, content-type and referrer headers through an approved CDN/custom domain proxy if required by policy. Do not rely on meta tags for HSTS.
@@ -32,7 +32,7 @@ Audit metadata should contain identifiers and minimal before/after values only. 
 1. Disable the affected Auth profile and revoke its sessions in Supabase.
 2. Rotate affected Edge Function secrets; redeploy functions.
 3. Preserve restricted provider audit logs and relevant `audit_events`, excluding secrets/proofs.
-4. Review access logs, RLS changes, invite events, role changes, proof access and exported datasets.
+4. Review access logs, RLS changes, account creation, role changes, proof access and exported datasets.
 5. Restore database/Storage from verified backups if integrity or deletion is involved; record the incident and notify impacted parties as required by law.
 6. Re-run RLS and proof-access tests before restoring service.
 

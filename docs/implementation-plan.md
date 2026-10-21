@@ -29,7 +29,7 @@ taskflow-sme/
 
 ## Schema summary
 
-Tenant root: `organisations`. Auth-linked identity/roles: `profiles` and scoped `permissions`. Workflow: `tasks`, append-only `task_status_history`, `task_comments`, and `task_reviews`. Accounting: `expense_lines` with PostgreSQL `numeric` and generated totals, plus private `expense_proofs` metadata. Supporting entities: `notifications`, append-only `audit_events`, and expiring `user_invitations`. Tenant tables use UUID keys, foreign keys, constraints, timestamps/actors, soft deletion where applicable, indexes and task optimistic versioning.
+Tenant root: `organisations`. Auth-linked identity/roles: `profiles` and scoped `permissions`. Workflow: `tasks`, append-only `task_status_history`, `task_comments`, and `task_reviews`. Accounting: `expense_lines` with PostgreSQL `numeric` and generated totals, plus private `expense_proofs` metadata. Supporting entities: `notifications`, append-only `audit_events`, and a compatibility-only `user_invitations` table. Tenant tables use UUID keys, foreign keys, constraints, timestamps/actors, soft deletion where applicable, indexes and task optimistic versioning.
 
 ## RLS policy matrix
 
@@ -39,7 +39,7 @@ Tenant root: `organisations`. Auth-linked identity/roles: `profiles` and scoped 
 | Tasks/history/comments | Own assigned tasks | Tasks created in own permitted scope | Own organisation |
 | Expense lines/proofs | Own task; editable only in permitted task states | Scoped task read | Own organisation |
 | Storage objects | Own task paths only | Authorized task proofs | Own organisation |
-| Audit/invites | Denied | Denied | Own organisation |
+| Audit/invitations | Denied | Denied | Own organisation |
 | Account roles | Denied | End-user administration only if explicitly granted | Server-side organisation administration |
 
 No anonymous business data. Authenticated table grants are minimized; task status/creation, expense writes, proof metadata and admin changes use authorization-checked functions. UI restrictions do not replace these policies.
@@ -63,7 +63,7 @@ No anonymous business data. Authenticated table grants are minimized; task statu
 
 1. Foundation: strict Vite/React shell, translations, private-source/Pages CI and project configuration.
 2. Security foundation: tenant schema, constraints, RLS, private Storage, RPCs, audit and local-only seed.
-3. Identity: login/recovery, username mapping, invitation, disabled account and forced reset.
+3. Identity: login/recovery, username mapping, administrator-provisioned accounts, disabled accounts and forced first-login password reset.
 4. Tasks: dashboards, creation, scoped lists, filters, transitions, comments/history and review queue.
 5. Expenses: decimal invoice lines, private proof upload/signed access, budget warnings and submission lock.
 6. Admin/reporting: people, filters, CSV, settings, audit display and notifications.

@@ -1,15 +1,15 @@
 -- ONE-TIME PRODUCTION BOOTSTRAP — run in the Supabase SQL Editor as the project owner.
--- First invite the intended Super Admin from Supabase Dashboard > Authentication > Users.
--- Run this promptly after the invitation is created, before the user accepts it.
+-- First add the intended Super Admin as an Auth user from Supabase Dashboard > Authentication > Users.
+-- Set a temporary password there; this script requires the user to change it at first sign-in.
 -- Replace all three values below with that person's real email, username, and full name.
--- This script stores no password. The invitation link lets the user set their own password.
+-- This script stores no password and does not send an email.
 -- Run only once, before any active Super Admin profile exists. Do not add this SQL to CI.
 
 do $bootstrap$
 declare
-  bootstrap_email text := lower(trim('REPLACE_WITH_ADMIN_EMAIL'));
-  bootstrap_username text := lower(trim('REPLACE_WITH_ADMIN_USERNAME'));
-  bootstrap_full_name text := trim('REPLACE_WITH_ADMIN_FULL_NAME');
+  bootstrap_email text := lower(trim('buddikaashansilva@hotmail.com'));
+  bootstrap_username text := lower(trim('Ashan'));
+  bootstrap_full_name text := trim('Buddika Ashan Silva');
   auth_user_id uuid;
   organisation_uuid uuid;
 begin
@@ -30,7 +30,7 @@ begin
     select 1 from public.profiles
     where role = 'super_admin' and is_active and deleted_at is null
   ) then
-    raise exception 'An active Super Admin already exists. Use People > Invite user instead.';
+    raise exception 'An active Super Admin already exists. Use People > Add user instead.';
   end if;
 
   select id into auth_user_id
@@ -40,7 +40,7 @@ begin
   limit 1;
 
   if auth_user_id is null then
-    raise exception 'No Supabase Auth user found for this email. First send an invitation from Authentication > Users.';
+    raise exception 'No Supabase Auth user found for this email. First add the user in Authentication > Users.';
   end if;
 
   if exists(select 1 from public.profiles where id = auth_user_id) then
