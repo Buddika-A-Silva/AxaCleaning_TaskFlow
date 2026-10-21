@@ -245,18 +245,44 @@ function AuditPage() {
 }
 
 type ManagedProfile = { id: string; full_name: string; username: string; role: string; recovery_email: string | null; is_active: boolean };
+type TemporaryCredentials = { username: string; password: string };
 function PeoplePage({ profile }: { profile: Profile | null }) {
-  const { t } = useTranslation(); const qc = useQueryClient(); const [open, setOpen] = useState(false); const [scopeOpen, setScopeOpen] = useState(false); const [message, setMessage] = useState(''); const [busy, setBusy] = useState(false);
+  const { t } = useTranslation(); const qc = useQueryClient(); const [open, setOpen] = useState(false); const [scopeOpen, setScopeOpen] = useState(false); const [message, setMessage] = useState(''); const [credentials, setCredentials] = useState<TemporaryCredentials | null>(null); const [busy, setBusy] = useState(false);
   const { data: people = [], isLoading, isError, refetch } = useQuery({ queryKey: ['people', profile?.organisation_id], enabled: Boolean(supabase && profile && profile.role !== 'end_user'), queryFn: async () => {
     const { data, error } = await supabase!.from('profiles').select('id,full_name,username,role,recovery_email,is_active').order('full_name'); if (error) throw error; return (data ?? []) as ManagedProfile[];
   } });
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setMessage(''); setBusy(true); if (!supabase) { setBusy(false); return; }
     const form = new FormData(event.currentTarget);
-    const payload = { email: String(form.get('email')), username: String(form.get('username')).toLowerCase(), full_name: String(form.get('full_name')), role: String(form.get('role')), recovery_email: String(form.get('recovery_email') || form.get('email')), phone: String(form.get('phone')), employee_id: String(form.get('employee_id')), department: String(form.get('department')), language: String(form.get('language')), timezone: 'Europe/Bucharest', can_manage_users: form.get('can_manage_users') === 'on' };
-    const { error } = await supabase.functions.invoke('admin-user-upsert', { body: payload });
-    if (error) setMessage(t('accountSaveFailed')); else { setMessage(t('inviteSent')); setOpen(false); await qc.invalidateQueries({ queryKey: ['people'] }); }
+    const email = String(form.get('email') || '').trim();
+    const payload = { email, username: String(form.get('username')).toLowerCase(), full_name: String(form.get('full_name')), role: String(form.get('role')), recovery_email: email || null, phone: String(form.get('phone')), employee_id: String(form.get('employee_id')), department: String(form.get('department')), language: String(form.get('language')), timezone: 'Europe/Bucharest', can_manage_users: form.get('can_manage_users') === 'on' };
+    const { data, error } = await supabase.functions.invoke('admin-user-upsert', { body: payload });
+    if (error) {
+      let failure = t('accountSaveFailed');
+      const context = error.context as Response | undefined;
+      if (context instanceof Response) { const body = await context.clone().json().catch(() => null) as { error?: string } | null; if (body?.error) failure = body.error; }
+      setMessage(failure);
+    } else {
+      setMessage(t('accountCreated'));
+      if (typeof data?.username === 'string' && typeof data?.temporary_password === 'string') setCredentials({ username: data.username, password: data.temporary_password });
+      setOpen(false); await qc.invalidateQueries({ queryKey: ['people'] });
+    }
     setBusy(false);
+  };
+  const resetTemporaryPassword = async (person: ManagedProfile) => {
+    if (!supabase || !window.confirm(t('resetTempConfirm'))) return;
+    setBusy(true); setMessage('');
+    const { data, error } = await supabase.functions.invoke('admin-user-upsert', { body: { action: 'reset-password', user_id: person.id } });
+    if (error) setMessage(t('accountSaveFailed'));
+    else if (typeof data?.username === 'string' && typeof data?.temporary_password === 'string') {
+      setCredentials({ username: data.username, password: data.temporary_password }); setMessage(t('temporaryPasswordReady'));
+    }
+    setBusy(false);
+  };
+  const copyCredentials = async () => {
+    if (!credentials) return;
+    try { await navigator.clipboard.writeText(`Username: ${credentials.username}\nTemporary password: ${credentials.password}`); setMessage(t('credentialsCopied')); }
+    catch { setMessage(t('copyCredentialsFailed')); }
   };
   const toggleActive = async (person: ManagedProfile) => {
     if (!supabase || person.role === 'super_admin') return;
@@ -266,11 +292,12 @@ function PeoplePage({ profile }: { profile: Profile | null }) {
   const updateScope = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); if(!supabase)return; setBusy(true); setMessage(''); const form=new FormData(event.currentTarget); const assignerId=String(form.get('assigner_id')); const endUserIds=form.getAll('end_user_ids').map(String); const {error}=await supabase.functions.invoke('admin-user-upsert',{body:{action:'set-scope',assigner_id:assignerId,end_user_ids:endUserIds}}); if(error)setMessage(t('scopeSaveFailed'));else{setMessage(t('scopeSaved'));setScopeOpen(false);await qc.invalidateQueries({queryKey:['people']});}setBusy(false);
   };
-  return <><div className="page-heading"><div><div className="date-overline"><Users size={14}/>{t('workspace')}</div><h1>{t('people')}</h1><p>{t('peopleSubtitle')}</p></div><button className="primary-button create-button" onClick={() => { setMessage(''); setOpen(!open); }}><Plus size={16}/>{t('inviteUser')}</button></div>
+  return <><div className="page-heading"><div><div className="date-overline"><Users size={14}/>{t('workspace')}</div><h1>{t('people')}</h1><p>{t('peopleSubtitle')}</p></div><button className="primary-button create-button" onClick={() => { setMessage(''); setOpen(!open); }}><Plus size={16}/>{t('addUser')}</button></div>
     {message && <div className="inline-notice" role="status">{message}</div>}
-    {open && <InviteForm role={profile?.role ?? 'end_user'} busy={busy} onCancel={() => setOpen(false)} onSubmit={submit} />}
+    {credentials && <section className="panel temporary-credentials" aria-live="polite"><div><h2>{t('temporaryPasswordReady')}</h2><p>{t('temporaryPasswordHint')}</p></div><dl><div><dt>{t('username')}</dt><dd>{credentials.username}</dd></div><div><dt>{t('temporaryPassword')}</dt><dd><code>{credentials.password}</code></dd></div></dl><div className="form-actions"><button type="button" className="secondary-button" onClick={() => void copyCredentials()}>{t('copyCredentials')}</button><button type="button" className="subtle-button" onClick={() => setCredentials(null)}>{t('dismiss')}</button></div></section>}
+    {open && <AddUserForm role={profile?.role ?? 'end_user'} busy={busy} onCancel={() => setOpen(false)} onSubmit={submit} />}
     {profile?.role==='super_admin' && <><button className="subtle-button scope-toggle" onClick={()=>setScopeOpen(!scopeOpen)}><Users size={15}/>{t('manageAssignerScope')}</button>{scopeOpen&&<form className="panel create-form scope-form" onSubmit={event=>void updateScope(event)}><h2>{t('manageAssignerScope')}</h2><Field label={t('assignerRole')}><select name="assigner_id" required defaultValue=""><option value="" disabled>{t('selectAssignee')}</option>{people.filter(person=>person.role==='assigner'&&person.is_active).map(person=><option key={person.id} value={person.id}>{person.full_name}</option>)}</select></Field><Field label={t('allowedEndUsers')}><select name="end_user_ids" multiple size={Math.min(6,Math.max(2,people.filter(person=>person.role==='end_user'&&person.is_active).length))} aria-label={t('allowedEndUsers')}>{people.filter(person=>person.role==='end_user'&&person.is_active).map(person=><option key={person.id} value={person.id}>{person.full_name} · @{person.username}</option>)}</select></Field><small>{t('scopeMultiSelect')}</small><div className="form-actions"><button type="button" className="secondary-button" onClick={()=>setScopeOpen(false)}>{t('cancel')}</button><button className="primary-button" disabled={busy}>{busy?t('saving'):t('saveScope')}</button></div></form>}</>}
-    <section className="panel list-page-panel people-panel"><div className="panel-heading"><div><h2>{t('people')}</h2><span>{t('peopleSubtitle')}</span></div></div>{isLoading ? <div className="skeleton-rows"><span/><span/><span/></div> : isError ? <div className="inline-error">{t('connectionError')}<button onClick={() => void refetch()}>{t('retry')}</button></div> : <div className="table-scroll"><table className="task-table people-table"><thead><tr><th>{t('name')}</th><th>{t('username')}</th><th>{t('role')}</th><th>{t('email')}</th><th>{t('status')}</th><th/></tr></thead><tbody>{people.map(person => <tr key={person.id}><td><b>{person.full_name}</b></td><td>@{person.username}</td><td>{person.role === 'super_admin' ? t('admin') : person.role === 'assigner' ? t('assignerRole') : t('user')}</td><td>{person.recovery_email ?? '—'}</td><td><span className={`status-pill ${person.is_active ? 'status-verified' : 'status-cancelled'}`}><i/>{person.is_active ? t('active') : t('inactive')}</span></td><td>{person.role !== 'super_admin' && <button className="subtle-button" onClick={() => void toggleActive(person)}>{person.is_active ? t('deactivate') : t('reactivate')}</button>}</td></tr>)}</tbody></table></div>}</section></>;
+    <section className="panel list-page-panel people-panel"><div className="panel-heading"><div><h2>{t('people')}</h2><span>{t('peopleSubtitle')}</span></div></div>{isLoading ? <div className="skeleton-rows"><span/><span/><span/></div> : isError ? <div className="inline-error">{t('connectionError')}<button onClick={() => void refetch()}>{t('retry')}</button></div> : <div className="table-scroll"><table className="task-table people-table"><thead><tr><th>{t('name')}</th><th>{t('username')}</th><th>{t('role')}</th><th>{t('email')}</th><th>{t('status')}</th><th/></tr></thead><tbody>{people.map(person => <tr key={person.id}><td><b>{person.full_name}</b></td><td>@{person.username}</td><td>{person.role === 'super_admin' ? t('admin') : person.role === 'assigner' ? t('assignerRole') : t('user')}</td><td>{person.recovery_email ?? '—'}</td><td><span className={`status-pill ${person.is_active ? 'status-verified' : 'status-cancelled'}`}><i/>{person.is_active ? t('active') : t('inactive')}</span></td><td>{person.role !== 'super_admin' && <div className="people-row-actions"><button className="subtle-button" disabled={busy} onClick={() => void resetTemporaryPassword(person)}>{t('resetTempPassword')}</button><button className="subtle-button" onClick={() => void toggleActive(person)}>{person.is_active ? t('deactivate') : t('reactivate')}</button></div>}</td></tr>)}</tbody></table></div>}</section></>;
 }
 
 const taskFormSchema = z.object({
@@ -318,9 +345,9 @@ function Field({ label, error, wide = false, children }: { label: string; error?
   return <div className={`form-field ${wide ? 'field-wide' : ''}`}><label>{label}{children}</label>{error && <span className="field-error">{error}</span>}</div>;
 }
 
-function InviteForm({ role, busy, onCancel, onSubmit }: { role: Profile['role']; busy: boolean; onCancel: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-  const { t } = useTranslation(); const [inviteRole, setInviteRole] = useState<'assigner' | 'end_user'>('end_user');
-  return <form className="panel create-form people-form" onSubmit={onSubmit}><div className="panel-heading form-panel-heading"><div><h2>{t('inviteUser')}</h2><span>{t('inviteSubtitle')}</span></div><button className="icon-button" type="button" onClick={onCancel} aria-label={t('close')}>×</button></div><div className="form-grid"><Field label={t('name')}><input name="full_name" required minLength={2} autoComplete="name"/></Field><Field label={t('username')}><input name="username" required minLength={3} pattern="[a-zA-Z0-9._-]+" autoComplete="username"/></Field><Field label={t('email')}><input name="email" type="email" required autoComplete="email"/></Field><Field label={t('role')}><select name="role" value={inviteRole} onChange={event => setInviteRole(event.target.value as 'assigner' | 'end_user')}><option value="end_user">{t('user')}</option>{role === 'super_admin' && <option value="assigner">{t('assignerRole')}</option>}</select></Field><Field label={t('phone')}><input name="phone" type="tel" autoComplete="tel"/></Field><Field label={t('employeeId')}><input name="employee_id"/></Field><Field label={t('department')}><input name="department"/></Field><Field label={t('language')}><select name="language" defaultValue="en"><option value="en">English</option><option value="ro">Română</option></select></Field>{role === 'super_admin' && inviteRole === 'assigner' && <label className="permission-field"><input type="checkbox" name="can_manage_users"/>{t('canManageUsers')}</label>}</div><div className="form-actions"><button type="button" className="secondary-button" onClick={onCancel}>{t('cancel')}</button><button className="primary-button" disabled={busy}>{busy ? t('saving') : t('sendInvitation')}</button></div></form>;
+function AddUserForm({ role, busy, onCancel, onSubmit }: { role: Profile['role']; busy: boolean; onCancel: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  const { t } = useTranslation(); const [newUserRole, setNewUserRole] = useState<'assigner' | 'end_user'>('end_user');
+  return <form className="panel create-form people-form" onSubmit={onSubmit}><div className="panel-heading form-panel-heading"><div><h2>{t('addUser')}</h2><span>{t('accountCreationHint')}</span></div><button className="icon-button" type="button" onClick={onCancel} aria-label={t('close')}>×</button></div><div className="form-grid"><Field label={t('name')}><input name="full_name" required minLength={2} autoComplete="name"/></Field><Field label={t('username')}><input name="username" required minLength={3} autoComplete="username"/></Field><Field label={t('emailOptional')}><input name="email" type="email" autoComplete="email"/></Field><Field label={t('role')}><select name="role" value={newUserRole} onChange={event => setNewUserRole(event.target.value as 'assigner' | 'end_user')}><option value="end_user">{t('user')}</option>{role === 'super_admin' && <option value="assigner">{t('assignerRole')}</option>}</select></Field><Field label={t('phone')}><input name="phone" type="tel" autoComplete="tel"/></Field><Field label={t('employeeId')}><input name="employee_id"/></Field><Field label={t('department')}><input name="department"/></Field><Field label={t('language')}><select name="language" defaultValue="en"><option value="en">English</option><option value="ro">Română</option></select></Field>{role === 'super_admin' && newUserRole === 'assigner' && <label className="permission-field"><input type="checkbox" name="can_manage_users"/>{t('canManageUsers')}</label>}</div><div className="form-actions"><button type="button" className="secondary-button" onClick={onCancel}>{t('cancel')}</button><button className="primary-button" disabled={busy}>{busy ? t('saving') : t('createAccount')}</button></div></form>;
 }
 
 function TaskDetail({ profile }: { profile: Profile | null }) {

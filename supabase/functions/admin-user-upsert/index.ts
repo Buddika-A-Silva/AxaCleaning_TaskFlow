@@ -7,6 +7,7 @@ const corsHeaders = {
   'Vary': 'Origin',
 };
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+const temporaryPassword = () => `AxA1-${crypto.randomUUID()}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(16)}`;
 
 Deno.serve(async (request: Request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -28,11 +29,34 @@ Deno.serve(async (request: Request) => {
       if (scopeError) return response({ error: 'Could not update scope' }, 409);
       return response({ updated: true });
     }
+    if (input.action === 'reset-password') {
+      if (typeof input.user_id !== 'string') return response({ error: 'Invalid account' }, 400);
+      const { data: target } = await admin.from('profiles').select('id,username,role,is_active,deleted_at,organisation_id,must_reset_password').eq('id', input.user_id).maybeSingle();
+      if (!target || target.organisation_id !== actor.organisation_id || !target.is_active || target.deleted_at) return response({ error: 'Account not found or inactive' }, 404);
+      if (actor.role !== 'super_admin') {
+        if (target.role !== 'end_user' || !actor.can_manage_users) return response({ error: 'Forbidden' }, 403);
+        const { data: scope } = await admin.from('permissions').select('id').eq('organisation_id', actor.organisation_id).eq('assigner_id', actor.id).eq('end_user_id', target.id).maybeSingle();
+        if (!scope) return response({ error: 'Forbidden' }, 403);
+      }
+      const password = temporaryPassword();
+      const { error: profileError } = await admin.from('profiles').update({ must_reset_password: true, updated_by: actor.id }).eq('id', target.id).eq('organisation_id', actor.organisation_id);
+      if (profileError) return response({ error: 'Could not set the required password reset' }, 409);
+      const { error: passwordError } = await admin.auth.admin.updateUserById(target.id, { password });
+      if (passwordError) {
+        await admin.from('profiles').update({ must_reset_password: target.must_reset_password, updated_by: actor.id }).eq('id', target.id).eq('organisation_id', actor.organisation_id);
+        console.error('admin-user-upsert password reset failed', { code: passwordError.code ?? 'unknown' });
+        return response({ error: 'Could not reset password' }, 409);
+      }
+      const { error: auditError } = await admin.from('audit_events').insert({ organisation_id: actor.organisation_id, actor_id: actor.id, action: 'profile.temporary_password_issued', entity_type: 'profile', entity_id: target.id, details: { username: target.username } });
+      if (auditError) console.error('admin-user-upsert password reset audit failed', { code: auditError.code });
+      return response({ id: target.id, username: target.username, temporary_password: password });
+    }
     const { id, email, username, full_name, role, recovery_email, phone, employee_id, department, language, timezone, is_active = true, can_manage_users = false } = input;
     if (!['assigner', 'end_user'].includes(role) || typeof username !== 'string' || !/^[a-z0-9._-]{3,40}$/.test(username) || typeof full_name !== 'string' || full_name.trim().length < 2) return response({ error: 'Invalid profile details' }, 400);
     const { data: duplicate } = await admin.from('profiles').select('id').eq('username', username.toLowerCase()).neq('id', typeof id === 'string' ? id : '00000000-0000-0000-0000-000000000000').maybeSingle();
     if (duplicate) return response({ error: 'Username is already in use' }, 409);
-    if (!id && (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) return response({ error: 'A valid email is required for invitations' }, 400);
+    const normalizedEmail = typeof email === 'string' && email.trim() ? email.trim().toLowerCase() : null;
+    if (normalizedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) return response({ error: 'Enter a valid email address or leave it blank' }, 400);
     if (actor.role === 'assigner') {
       if (role !== 'end_user' || !actor.can_manage_users) return response({ error: 'Forbidden' }, 403);
     }
@@ -56,38 +80,45 @@ Deno.serve(async (request: Request) => {
       }
       return response({ id });
     }
-    const appOrigin = (Deno.env.get('APP_ORIGIN') ?? 'https://buddika-a-silva.github.io').replace(/\/$/, '');
-    const inviteRedirectUrl = Deno.env.get('INVITE_REDIRECT_URL') ?? `${appOrigin}/AxaCleaning_TaskFlow/reset-password`;
-    let redirectOrigin: string;
-    try { redirectOrigin = new URL(inviteRedirectUrl).origin; } catch { return response({ error: 'Invitation redirect is not configured' }, 500); }
-    if (redirectOrigin !== appOrigin) return response({ error: 'Invitation redirect is not configured' }, 500);
-    const { data: invitation, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: inviteRedirectUrl,
-      data: { username: username.toLowerCase(), full_name: full_name.trim() },
+    const password = temporaryPassword();
+    const authEmail = normalizedEmail ?? `${crypto.randomUUID()}@no-email.axa-cleaning.invalid`;
+    const { data: created, error: createError } = await admin.auth.admin.createUser({
+      email: authEmail,
+      password,
+      email_confirm: true,
+      user_metadata: { username: username.toLowerCase(), full_name: full_name.trim() },
     });
-    const invitedUser = invitation.user;
-    if (inviteError || !invitedUser) return response({ error: 'Could not create invitation' }, 409);
-    const { error: profileError } = await admin.from('profiles').insert({ id: invitedUser.id, organisation_id: actor.organisation_id, username: username.toLowerCase(), full_name: full_name.trim(), recovery_email, phone, employee_id, department, role, language: language === 'ro' ? 'ro' : 'en', timezone: timezone ?? 'Europe/Bucharest', is_active: true, must_reset_password: true, can_manage_users: actor.role === 'super_admin' && role === 'assigner' && Boolean(can_manage_users), created_by: actor.id });
+    const newUser = created.user;
+    if (createError || !newUser) {
+      console.error('admin-user-upsert auth account creation failed', { code: createError?.code ?? 'unknown' });
+      return response({ error: 'Could not create account. Check whether the email is already registered.' }, 409);
+    }
+    const { error: profileError } = await admin.from('profiles').insert({ id: newUser.id, organisation_id: actor.organisation_id, username: username.toLowerCase(), full_name: full_name.trim(), recovery_email: normalizedEmail, phone, employee_id, department, role, language: language === 'ro' ? 'ro' : 'en', timezone: timezone ?? 'Europe/Bucharest', is_active: true, must_reset_password: true, can_manage_users: actor.role === 'super_admin' && role === 'assigner' && Boolean(can_manage_users), created_by: actor.id });
     if (profileError) {
-      await admin.auth.admin.deleteUser(invitedUser.id);
-      return response({ error: 'Could not create profile' }, 409);
+      console.error('admin-user-upsert profile creation failed', { code: profileError.code });
+      await admin.auth.admin.deleteUser(newUser.id);
+      return response({ error: profileError.code === '23505' ? 'Username or employee ID is already in use' : 'Could not save the account profile' }, 409);
     }
     if (actor.role === 'assigner') {
-      const { error: permissionError } = await admin.from('permissions').insert({ organisation_id: actor.organisation_id, assigner_id: actor.id, end_user_id: invitedUser.id, can_manage_users: false, created_by: actor.id });
+      const { error: permissionError } = await admin.from('permissions').insert({ organisation_id: actor.organisation_id, assigner_id: actor.id, end_user_id: newUser.id, can_manage_users: false, created_by: actor.id });
       if (permissionError) {
-        await admin.from('profiles').delete().eq('id', invitedUser.id);
-        await admin.auth.admin.deleteUser(invitedUser.id);
+        console.error('admin-user-upsert permission creation failed', { code: permissionError.code });
+        await admin.from('profiles').delete().eq('id', newUser.id);
+        await admin.auth.admin.deleteUser(newUser.id);
         return response({ error: 'Could not set user permissions' }, 409);
       }
     }
-    const { error: invitationError } = await admin.from('user_invitations').insert({ organisation_id: actor.organisation_id, email, username: username.toLowerCase(), role, invited_by: actor.id, expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() });
-    if (invitationError) {
-      await admin.from('profiles').delete().eq('id', invitedUser.id);
-      await admin.auth.admin.deleteUser(invitedUser.id);
-      return response({ error: 'Could not save invitation' }, 409);
+    const { error: auditError } = await admin.from('audit_events').insert({ organisation_id: actor.organisation_id, actor_id: actor.id, action: 'profile.account_created', entity_type: 'profile', entity_id: newUser.id, details: { username: username.toLowerCase(), role, email_provided: Boolean(normalizedEmail) } });
+    if (auditError) {
+      console.error('admin-user-upsert audit event creation failed', { code: auditError.code });
+      await admin.from('permissions').delete().eq('end_user_id', newUser.id).eq('organisation_id', actor.organisation_id);
+      await admin.from('profiles').delete().eq('id', newUser.id);
+      await admin.auth.admin.deleteUser(newUser.id);
+      return response({ error: 'Could not record account creation' }, 409);
     }
-    return response({ id: invitedUser.id }, 201);
-  } catch {
+    return response({ id: newUser.id, username: username.toLowerCase(), temporary_password: password }, 201);
+  } catch (error) {
+    console.error('admin-user-upsert request failed', error instanceof Error ? error.name : 'Unknown error');
     return response({ error: 'Request could not be processed' }, 400);
   }
 });
