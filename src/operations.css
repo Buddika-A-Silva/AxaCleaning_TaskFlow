@@ -15,6 +15,7 @@
 .employee-option b,.employee-option small{display:block}
 .employee-option b{font-size:11px}.employee-option small{font-size:9px;color:#929bad;margin-top:3px}
 .service-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.service-estimate-hint{margin:0 0 10px;color:#7f899a;font-size:11px}
 .service-area{border:1px solid #edf0f5;border-radius:11px;padding:14px}
 .service-check{min-height:38px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #f3f4f7;font-size:11px;cursor:pointer}
 .service-check:last-child{border-bottom:0}

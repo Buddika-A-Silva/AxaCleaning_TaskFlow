@@ -11,7 +11,7 @@ English-only task, budget and expense tracking for AXA Cleaning. **Product by Ar
 
 ## Stack and features
 
-React 19, TypeScript strict mode, Vite, React Router, Tailwind CSS, TanStack Query, React Hook Form, Zod, i18next, Supabase JS, Decimal.js, Vitest, Testing Library and Playwright. The app includes login/recovery/password reset, role-aware dashboards, draftable cleaning visits with individual or group assignments, customer and service details, configurable service/equipment catalogs, assigned and per-worker service hours, private task and completion photos, equipment return confirmation, manager calendar and worker-hour reports, comments/status history, task expenses, review actions, administrator-provisioned accounts with employee numbers, temporary passwords and deactivation, scoped filters, CSV export, audit and a static-shell PWA service worker.
+React 19, TypeScript strict mode, Vite, React Router, Tailwind CSS, TanStack Query, React Hook Form, Zod, i18next, Supabase JS, Decimal.js, Vitest, Testing Library and Playwright. The app includes login/recovery/password reset, role-aware dashboards, draftable cleaning visits with individual or group assignments, customer and service details, configurable service/equipment catalogs, optional task/service time estimates with worker-entered actual service hours, private task and completion photos, equipment return confirmation, manager calendar and worker-hour reports, comments/status history, task expenses, review actions, administrator-provisioned accounts with employee numbers, temporary passwords and deactivation, scoped filters, CSV export, audit and a static-shell PWA service worker.
 
 ## Local development
 
