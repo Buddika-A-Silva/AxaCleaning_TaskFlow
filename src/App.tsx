@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useForm, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
@@ -414,7 +414,9 @@ function CreateTaskPage({ profile }: { profile: Profile | null }) {
   const { register, handleSubmit, formState:{errors,isSubmitting} } = useForm<TaskFormValues>({ resolver:zodResolver(taskFormSchema), defaultValues:{reference:'',title:'',description:'',assignee:'',priority:'medium',startDate:new Date().toISOString().slice(0,10),dueDate:'',budget:'',currency:'EUR'} });
   const saveTask = async (values: TaskFormValues, draft: boolean) => {
     setFormError('');
-    if (!supabase || !profile) return;
+    if (!supabase) { setFormError(t('backendMissing')); return; }
+    if (!profile) { setFormError(t('connectionError')); return; }
+    if (profile.role === 'end_user') { setFormError(t('noPermission')); return; }
     if (!draft && !assignees.length) { setActiveTab('assignment'); setFormError(t('selectAtLeastOneWorker')); return; }
     if (customer.customer_name.trim().length < 2 || customer.apartment_number.trim().length < 1 || customer.apartment_block.trim().length < 1 || customer.customer_address.trim().length < 3 || customer.customer_phone.trim().length < 5) { setActiveTab('customer'); setFormError(t('customerDetailsRequired')); return; }
     if (!assignedHours || !/^\d+(\.\d{1,2})?$/.test(assignedHours) || Number(assignedHours) <= 0) { setActiveTab('assignment'); setFormError(t('invalidAssignedHours')); return; }
@@ -438,8 +440,13 @@ function CreateTaskPage({ profile }: { profile: Profile | null }) {
     await qc.invalidateQueries({queryKey:['tasks']});
     navigate(`/app/tasks/${data.id}`);
   };
-  const submit = handleSubmit(values => saveTask(values, false));
-  const saveDraft = handleSubmit(values => saveTask(values, true));
+  const handleInvalid = (invalid: FieldErrors<TaskFormValues>) => {
+    const assignmentFields = ['reference', 'title', 'priority', 'startDate', 'dueDate', 'budget', 'currency'];
+    setActiveTab(assignmentFields.some(field => field in invalid) ? 'assignment' : 'customer');
+    setFormError(t('taskFormFieldsInvalid'));
+  };
+  const submit = handleSubmit(values => saveTask(values, false), handleInvalid);
+  const saveDraft = handleSubmit(values => saveTask(values, true), handleInvalid);
   const toggleAssignee=(id:string)=>setAssignees(current=>current.includes(id)?current.filter(value=>value!==id):[...current,id]);
   const toggleSubtask=(areaId:string,subtaskId:string)=>{
     const key=subtaskId;
@@ -474,7 +481,7 @@ function CreateTaskPage({ profile }: { profile: Profile | null }) {
         <Field label={t('apartmentBlock')}><input value={customer.apartment_block} onChange={e=>setCustomer({...customer,apartment_block:e.target.value})} required/></Field>
         <Field label={t('customerPhone')}><input type="tel" value={customer.customer_phone} onChange={e=>setCustomer({...customer,customer_phone:e.target.value})} required/></Field>
         <Field label={t('customerAddress')} wide><textarea rows={3} value={customer.customer_address} onChange={e=>setCustomer({...customer,customer_address:e.target.value})} required/></Field>
-        <Field label={t('description')} wide><textarea rows={3} maxLength={10000} {...register('description')}/></Field>
+        <Field label={t('description')} error={errors.description?.message} wide><textarea rows={3} maxLength={10000} {...register('description')}/></Field>
       </div></div>}
       {activeTab==='services'&&<div className="wizard-panel">
         <div className="service-grid">{areas.map(area=><section className="service-area" key={area.id}><h2>{area.name}</h2>{subtasks.filter(subtask=>subtask.area_id===area.id).map(subtask=>{const selected=Boolean(selectedServices[subtask.id]);return <label className={`service-check ${selected?'selected':''}`} key={subtask.id}><input type="checkbox" checked={selected} onChange={()=>toggleSubtask(area.id,subtask.id)} /><span>{subtask.name}</span>{selected&&<input className="service-hours" type="number" min="0" step="0.25" placeholder={t('assignedHours')} value={selectedServices[subtask.id]?.hours||''} onChange={e=>setSelectedServices({...selectedServices,[subtask.id]:{...selectedServices[subtask.id],hours:e.target.value}})} />}</label>;})}</section>)}</div>

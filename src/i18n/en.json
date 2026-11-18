@@ -34,6 +34,7 @@
   "taskConflict": "This task changed elsewhere. Refresh to review the latest version and try again.",
   "transitionFailed": "This status change is not allowed or could not be saved.",
   "taskValidationError": "Check the task fields and your permitted assignment scope.",
+  "taskFormFieldsInvalid": "Review the highlighted task fields and try again.",
   "exportFailed": "The filtered export could not be prepared. Try again.",
   "dueIn": "Due in {{count}} days",
   "taskOverview": "Task overview",
