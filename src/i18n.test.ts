@@ -1,24 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import i18n from './i18n';
 import en from './i18n/en.json';
-import ro from './i18n/ro.json';
 
-function flattenKeys(value: Record<string, unknown>, prefix = ''): string[] {
-  return Object.entries(value).flatMap(([key, child]) => {
-    const path = prefix ? `${prefix}.${key}` : key;
-    return child && typeof child === 'object' && !Array.isArray(child)
-      ? flattenKeys(child as Record<string, unknown>, path)
-      : [path];
-  });
-}
-
-describe('English and Romanian resources', () => {
-  it('have identical translation keys', () => {
-    expect(flattenKeys(en).sort()).toEqual(flattenKeys(ro).sort());
+describe('English-only interface', () => {
+  it('initializes English as the only translation resource', () => {
+    expect(i18n.language).toBe('en');
+    expect(i18n.options.resources).toHaveProperty('en');
+    expect(i18n.options.resources).not.toHaveProperty('ro');
   });
 
-  it('do not contain empty strings', () => {
-    for (const [key, value] of Object.entries({ ...en, ...ro })) {
-      expect(value, key).not.toBe('');
+  it('does not contain empty translation strings', () => {
+    for (const [key, value] of Object.entries(en)) {
+      expect(value.trim(), key).not.toBe('');
     }
   });
 });

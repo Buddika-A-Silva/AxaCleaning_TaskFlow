@@ -25,9 +25,9 @@ values
   ('10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','morgan.admin','Morgan Admin','admin@taskflow.local','super_admin','en',true,false,false),
   ('10000000-0000-4000-8000-000000000002','20000000-0000-4000-8000-000000000001','taylor.manager','Taylor Manager','assigner@taskflow.local','assigner','en',true,false,true),
   ('10000000-0000-4000-8000-000000000003','20000000-0000-4000-8000-000000000001','alex.rivera','Alex Rivera','alex@taskflow.local','end_user','en',true,false,false),
-  ('10000000-0000-4000-8000-000000000004','20000000-0000-4000-8000-000000000001','sam.ionescu','Sam Ionescu','sam@taskflow.local','end_user','ro',true,false,false),
+  ('10000000-0000-4000-8000-000000000004','20000000-0000-4000-8000-000000000001','sam.ionescu','Sam Ionescu','sam@taskflow.local','end_user','en',true,false,false),
   ('10000000-0000-4000-8000-000000000005','20000000-0000-4000-8000-000000000001','tester.one','Jordan Test','tester.one@taskflow.local','end_user','en',true,false,false),
-  ('10000000-0000-4000-8000-000000000006','20000000-0000-4000-8000-000000000001','tester.two','Casey Test','tester.two@taskflow.local','end_user','ro',true,false,false)
+  ('10000000-0000-4000-8000-000000000006','20000000-0000-4000-8000-000000000001','tester.two','Casey Test','tester.two@taskflow.local','end_user','en',true,false,false)
 on conflict(id) do nothing;
 
 insert into public.permissions(organisation_id,assigner_id,end_user_id,created_by)

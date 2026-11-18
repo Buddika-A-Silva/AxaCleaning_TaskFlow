@@ -1,6 +1,6 @@
 # AXA Cleaning
 
-Bilingual (English/Romanian) task, budget and expense tracking for AXA Cleaning. **Product by Arctic Technologies.** The AXA Cleaning logo in `src/LOGO.jpeg` is used across the app, as the favicon, and as the installed PWA icon. The browser runs only the compiled Vite application; Supabase owns identity, authorization, PostgreSQL data, private proof storage and privileged operations.
+English-only task, budget and expense tracking for AXA Cleaning. **Product by Arctic Technologies.** The AXA Cleaning logo in `src/LOGO.jpeg` is used across the app, as the favicon, and as the installed PWA icon. The browser runs only the compiled Vite application; Supabase owns identity, authorization, PostgreSQL data, private proof storage and privileged operations.
 
 ## Security boundary
 
@@ -11,7 +11,7 @@ Bilingual (English/Romanian) task, budget and expense tracking for AXA Cleaning.
 
 ## Stack and features
 
-React 19, TypeScript strict mode, Vite, React Router, Tailwind CSS, TanStack Query, React Hook Form, Zod, i18next, Supabase JS, Decimal.js, Vitest, Testing Library and Playwright. The app includes bilingual login/recovery/password reset, role-aware dashboards, task creation, comments/status history, validation, task expenses, private proofs with short-lived signed URLs, review actions, administrator-provisioned accounts with temporary passwords/deactivation, scoped filters, CSV export, audit and a static-shell PWA service worker.
+React 19, TypeScript strict mode, Vite, React Router, Tailwind CSS, TanStack Query, React Hook Form, Zod, i18next, Supabase JS, Decimal.js, Vitest, Testing Library and Playwright. The app includes login/recovery/password reset, role-aware dashboards, draftable cleaning visits with individual or group assignments, customer and service details, configurable service/equipment catalogs, assigned and per-worker service hours, private task and completion photos, equipment return confirmation, manager calendar and worker-hour reports, comments/status history, task expenses, review actions, administrator-provisioned accounts with employee numbers, temporary passwords and deactivation, scoped filters, CSV export, audit and a static-shell PWA service worker.
 
 ## Local development
 
@@ -26,9 +26,8 @@ Synthetic local credentials (only in the local seeded Supabase instance):
 - Super Admin: `admin@taskflow.local` / `TaskFlowLocal2026!`
 - Assigner: `assigner@taskflow.local` / `TaskFlowLocal2026!`
 - End User: `alex@taskflow.local` / `TaskFlowLocal2026!`
-- Romanian End User: `sam@taskflow.local` / `TaskFlowLocal2026!`
 - Test End User 1 (English): `tester.one@taskflow.local` / `TaskFlowLocal2026!`
-- Test End User 2 (Romanian): `tester.two@taskflow.local` / `TaskFlowLocal2026!`
+- Test End User 2 (English): `tester.two@taskflow.local` / `TaskFlowLocal2026!`
 
 **Never deploy these users, passwords, or seeded tasks to production.** The seed script is not called by CI or Pages deployment.
 
@@ -69,7 +68,7 @@ The two `tester.*@taskflow.local` users above are synthetic local-development fi
 ## Supabase production setup
 
 1. Create separate Supabase development, test and production projects. Do not import the local seed into production.
-2. Configure Auth email/password, password policy (12+ characters), email delivery, redirect allow-list, session duration, abuse protection and MFA requirements for privileged roles. Disable public sign-up.
+2. Configure Auth email/password, password policy (at least 8 characters), email delivery, redirect allow-list, session duration, abuse protection and MFA requirements for privileged roles. Disable public sign-up.
 3. Link the CLI to the intended project and apply reviewed migrations. Verify all tables have RLS enabled, the anonymous role has no business grants, and `task-proofs` is private with the 10 MiB MIME allow-list.
 4. Add `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, a cryptographically random `LOGIN_RATE_LIMIT_SALT` of at least 32 characters, and `APP_ORIGIN=https://buddika-a-silva.github.io` as Supabase Function secrets. `APP_ORIGIN` is the site origin only—no repository path or trailing slash. The function has the same production-origin fallback, but explicitly setting the secret is recommended. Never add the service-role key or rate-limit salt to GitHub variables or `VITE_*` values.
 5. Deploy `username-login` and `admin-user-upsert`. Configure Auth rate-limiting and monitor denied requests. User creation does not send mail; maintain a secure channel for sharing one-time passwords and configure a real recovery email when available.
@@ -98,4 +97,4 @@ Migrations are intentionally **not** auto-applied by Pages CI. Review and apply 
 
 ## Known release gates
 
-Before production, complete a real Supabase environment verification, Romanian language review by a fluent speaker, MFA policy decision, independent accessibility audit, backup restore drill, malware scanning policy for proofs, full audit of SQL/RLS against the target Supabase version, and browser E2E flows with provisioned test identities. Configure transactional email if users will rely on email-based password recovery. No claim of production security certification is made by a passing frontend build alone.
+Before production, complete a real Supabase environment verification, MFA policy decision, independent accessibility audit, backup restore drill, malware scanning policy for proofs, full audit of SQL/RLS against the target Supabase version, and browser E2E flows with provisioned test identities. Configure transactional email if users will rely on email-based password recovery. No claim of production security certification is made by a passing frontend build alone.

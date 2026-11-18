@@ -13,7 +13,7 @@ taskflow-sme/
 │   ├── app/                 # browser entry, router, query providers
 │   ├── components/          # accessible design primitives
 │   ├── features/            # task, expense, review and user workflows
-│   ├── i18n/                # en.json and ro.json resources
+│   ├── i18n/                # English UI resources
 │   ├── lib/                 # Supabase, Decimal money, CSV, workflow rules
 │   └── test/                # Vitest setup
 ├── supabase/
