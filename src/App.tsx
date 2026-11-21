@@ -662,6 +662,52 @@ export default function App() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => { void loadProfile(session?.user ?? null); });
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, [i18n]);
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !profile) return;
+    const channel = client.channel(`task-updates-${profile.id}`);
+    const invalidateTaskData = (taskId?: string) => {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+        queryClient.invalidateQueries({ queryKey: ['task-register'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-metrics'] }),
+        queryClient.invalidateQueries({ queryKey: ['report-assignments'] }),
+        ...(taskId ? [
+          queryClient.invalidateQueries({ queryKey: ['task', taskId] }),
+          queryClient.invalidateQueries({ queryKey: ['task-assignments', taskId] }),
+        ] : []),
+      ]);
+    };
+    channel
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'tasks',
+        filter: `organisation_id=eq.${profile.organisation_id}`,
+      }, payload => {
+        const row = payload.new as { id?: unknown };
+        const previousRow = payload.old as { id?: unknown };
+        const taskId = typeof row.id === 'string' ? row.id : typeof previousRow.id === 'string' ? previousRow.id : undefined;
+        invalidateTaskData(taskId);
+      })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'task_assignments',
+        filter: `organisation_id=eq.${profile.organisation_id}`,
+      }, payload => {
+        const row = payload.new as { task_id?: unknown };
+        const previousRow = payload.old as { task_id?: unknown };
+        const taskId = typeof row.task_id === 'string' ? row.task_id : typeof previousRow.task_id === 'string' ? previousRow.task_id : undefined;
+        invalidateTaskData(taskId);
+      })
+      .subscribe((status, error) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error('Task updates realtime subscription failed', error ?? status);
+        }
+      });
+    return () => { void client.removeChannel(channel); };
+  }, [profile, queryClient]);
   const signOut = async () => { await supabase?.auth.signOut(); setUser(null); setProfile(null); queryClient.clear(); navigate('/login'); };
   if (!ready) return <div className="splash"><img className="splash-logo" src={axaLogo} alt="" /><span>AXA Cleaning</span></div>;
   if (!user) return <Routes><Route path="/forgot-password" element={<ForgotPassword />} /><Route path="*" element={<Login />} /></Routes>;
