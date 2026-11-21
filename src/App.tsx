@@ -5,12 +5,13 @@ import { useForm, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
-import { Activity, ArrowRight, BadgeCheck, Bell, CalendarDays, Check, ChevronDown, CircleDollarSign, ClipboardList, Clock3, FileText, Filter, LayoutDashboard, LogOut, Menu, Pencil, Plus, Search, Settings, ShieldCheck, Users, WalletCards } from 'lucide-react';
+import { Activity, ArrowRight, BadgeCheck, Bell, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardList, Clock3, FileText, Filter, LayoutDashboard, LogOut, Menu, Pencil, Plus, Search, Settings, ShieldCheck, Users, WalletCards } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import Decimal from 'decimal.js';
 import { budgetBalance, calculateLineTotal, formatMoney, sumMoney } from './lib/money';
 import { toCsv } from './lib/csv';
+import { formatDateKey, formatMonthKey, getMonthCalendarDays, parseMonthKey, taskOccursOnCalendarDay } from './lib/calendar';
 import axaLogo from './LOGO.jpeg';
 
 function Brand({ light = false, compact = false }: { light?: boolean; compact?: boolean }) {
@@ -85,6 +86,7 @@ function Login() {
 const navItems = [
   { to: '/app', key: 'dashboard', icon: LayoutDashboard, end: true },
   { to: '/app/tasks', key: 'myTasks', icon: ClipboardList },
+  { to: '/app/calendar', key: 'calendar', icon: CalendarDays, roles: ['assigner', 'super_admin'] },
   { to: '/app/reviews', key: 'reviews', icon: BadgeCheck, roles: ['assigner', 'super_admin'] },
   { to: '/app/people', key: 'people', icon: Users, roles: ['super_admin'] },
   { to: '/app/reports', key: 'reports', icon: WalletCards },
@@ -219,11 +221,9 @@ function ReviewQueue({ profile }: { profile: Profile | null }) {
 
 function ReportsPage({ profile }: { profile: Profile | null }) {
   const { t }=useTranslation();
-  const [month,setMonth]=useState(()=>new Date().toISOString().slice(0,7));
   const {data:tasks=[],isLoading,isError,refetch}=useTasks(profile);
   const {data:lines=[]}=useQuery({queryKey:['report-expenses',profile?.id],enabled:Boolean(supabase&&profile),queryFn:async()=>{const {data,error}=await supabase!.from('expense_lines').select('task_id,line_total').is('deleted_at',null).limit(5000);if(error)throw error;return data??[];}});
   const {data:assignments=[]}=useQuery<ReportAssignment[]>({queryKey:['report-assignments',profile?.id],enabled:Boolean(supabase&&profile),queryFn:async()=>{const {data,error}=await supabase!.from('task_assignments').select('task_id,profile_id,assigned_hours,profiles(full_name,employee_id)').limit(5000);if(error)throw error;return (data??[]) as ReportAssignment[];}});
-  const {data:workers=[]}=useQuery<Array<{id:string;full_name:string}>>({queryKey:['report-workers',profile?.id],enabled:Boolean(supabase&&profile&&profile.role!=='end_user'),queryFn:async()=>{const {data,error}=await supabase!.from('profiles').select('id,full_name').eq('role','end_user').eq('is_active',true).is('deleted_at',null).order('full_name');if(error)throw error;return (data??[]) as Array<{id:string;full_name:string}>;}});
   const {data:serviceLogs=[]}=useQuery<ReportServiceLog[]>({queryKey:['report-service-hours',profile?.id],enabled:Boolean(supabase&&profile),queryFn:async()=>{const {data,error}=await supabase!.from('task_service_logs').select('task_id,profile_id,actual_hours').limit(5000);if(error)throw error;return (data??[]) as ReportServiceLog[];}});
   const workerHours=useMemo(()=>{
     const rows=new Map<string,{profile_id:string;name:string;employee_id:string;assigned:number;actual:number}>();
@@ -238,20 +238,177 @@ function ReportsPage({ profile }: { profile: Profile | null }) {
     return [...rows.values()];
   },[assignments,serviceLogs]);
   const totalSpent=sumMoney(lines.map(line=>String(line.line_total)));
-  const year=Number(month.slice(0,4)); const monthIndex=Number(month.slice(5,7))-1;
-  const first=new Date(year,monthIndex,1); const startOffset=(first.getDay()+6)%7;
-  const daysInMonth=new Date(year,monthIndex+1,0).getDate();
-  const monthTasks=tasks.filter(task=>!task.is_draft&&task.due_date.startsWith(month));
-  const monthCells=Array.from({length:42},(_,index)=>{
-    const day=index-startOffset+1;
-    return day>=1&&day<=daysInMonth?day:null;
-  });
   const exportReport=()=>{const csv=toCsv(tasks.map(task=>({reference:task.reference,title:task.title,status:task.status,priority:task.priority,due_date:task.due_date,budget:task.budget_limit,currency:task.currency,spent:sumMoney(lines.filter(line=>line.task_id===task.id).map(line=>String(line.line_total)))})),[{key:'reference',label:t('reference')},{key:'title',label:t('taskName')},{key:'status',label:t('status')},{key:'priority',label:t('priority')},{key:'due_date',label:t('dueDate')},{key:'budget',label:t('budget')},{key:'spent',label:t('spent')},{key:'currency',label:t('currency')}]);const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download='taskflow-report.csv';link.click();URL.revokeObjectURL(url);};
-  return <><div className="page-heading"><div><div className="date-overline"><WalletCards size={14}/>{t('workspace')}</div><h1>{t('reports')}</h1><p>{t('reportsSubtitle')}</p></div><button className="primary-button create-button" onClick={exportReport} disabled={isLoading||isError}>{t('exportCsv')}</button></div>
+  return <><div className="page-heading"><div><div className="date-overline"><WalletCards size={14}/>{t('workspace')}</div><h1>{t('reports')}</h1><p>{t('reportsSubtitle')}</p></div><div className="calendar-heading-actions">{profile?.role !== 'end_user'&&<Link className="secondary-button" to="/app/calendar"><CalendarDays size={16}/>{t('calendar')}</Link>}<button className="primary-button create-button" onClick={exportReport} disabled={isLoading||isError}>{t('exportCsv')}</button></div></div>
     <section className="metrics-grid"><MetricCard label={t('totalTasks')} value={tasks.length} icon={ClipboardList} tone="purple"/><MetricCard label={t('awaitingReview')} value={tasks.filter(task=>task.status==='submitted').length} icon={BadgeCheck} tone="amber"/><MetricCard label={t('completedTasks')} value={tasks.filter(task=>task.status==='verified').length} icon={Check} tone="green"/><MetricCard label={t('spent')} value={formatMoney(totalSpent,'EUR','en-GB')} icon={CircleDollarSign} tone="blue"/></section>
-    {profile?.role!== 'end_user'&&<section className="panel calendar-panel"><div className="panel-heading"><div><h2>{t('calendar')}</h2><span>{t('calendarHint')}</span></div><input className="calendar-month" type="month" value={month} onChange={e=>setMonth(e.target.value)}/></div><div className="calendar-grid">    <div className="calendar-weekdays">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day=><b key={day}>{day}</b>)}</div><div className="calendar-days">{monthCells.map((day,index)=>{const date=day?`${month}-${String(day).padStart(2,'0')}`:'';const dayTasks=day?monthTasks.filter(task=>(task.start_date??task.due_date)<=date&&task.due_date>=date&&!['verified','cancelled'].includes(task.status)):[];const assignedWorkerIds=new Set(assignments.filter(item=>dayTasks.some(task=>task.id===item.task_id)).map(item=>item.profile_id));const available=workers.filter(worker=>!assignedWorkerIds.has(worker.id));return <div className={`calendar-day ${dayTasks.length?'has-tasks':''}`} key={index}>{day&&<><span className="calendar-day-number">{day}</span><div className="calendar-task-list">{dayTasks.slice(0,2).map(task=><Link key={task.id} to={`/app/tasks/${task.id}`} title={`${task.reference} · ${task.title}`}><i/> {task.reference}</Link>)}</div>{dayTasks.length>2&&<small>+{dayTasks.length-2}</small>}<div className="calendar-tooltip"><b>{t('scheduledTasks')} · {dayTasks.length}</b>{dayTasks.slice(0,4).map(task=><b key={task.id}>{task.reference} · {task.title}</b>)}<span>{t('availableWorkers')} · {available.length}: {available.slice(0,4).map(worker=>worker.full_name).join(', ')||'—'}{available.length>4?'…':''}</span></div></>}</div>;})}</div></div></section>}
     <section className="panel report-panel"><div className="panel-heading"><div><h2>{t('workerHours')}</h2><span>{t('workerHoursHint')}</span></div></div><div className="worker-hours-list">{workerHours.map(row=><div className="worker-hours-row" key={row.profile_id}><b>{row.name}</b><span>{row.employee_id||'—'}</span><span>{t('assignedHours')}: {row.assigned}</span><span>{t('actualHours')}: {row.actual}</span></div>)}{!workerHours.length&&<div className="empty-expenses">{t('noTasksHint')}</div>}</div></section>
     <section className="panel report-panel"><div className="panel-heading"><div><h2>{t('taskOverview')}</h2><span>{t('reportsSubtitle')}</span></div></div><TaskTable tasks={tasks.slice(0,50)} isLoading={isLoading} isError={isError} onRetry={()=>void refetch()}/></section></>;
+}
+
+type CalendarAssignment = { task_id: string; profile_id: string; assigned_hours: number | null; profiles: Related<EmployeeSummary> };
+type CalendarServiceHour = { task_id: string; actual_hours: number | null };
+type CalendarWorker = { id: string; full_name: string };
+type TaskCalendarData = { tasks: Task[]; assignments: CalendarAssignment[]; serviceHours: CalendarServiceHour[]; workers: CalendarWorker[] };
+
+async function loadTaskCalendar(month: string): Promise<TaskCalendarData> {
+  const client = supabase;
+  if (!client) throw new Error('Backend not configured');
+  const { year, month: monthNumber } = parseMonthKey(month);
+  const monthStart = `${month}-01`;
+  const monthEnd = formatDateKey(new Date(year, monthNumber, 0));
+  const pageSize = 500;
+  const tasks: Task[] = [];
+
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await client.from('tasks')
+      .select('id,organisation_id,reference,title,description,status,priority,start_date,due_date,budget_limit,currency,assignee_id,assigner_id,assigned_hours,is_draft,version,customer_name,apartment_number,apartment_block,customer_address')
+      .is('deleted_at', null)
+      .eq('is_draft', false)
+      .lte('start_date', monthEnd)
+      .gte('due_date', monthStart)
+      .order('start_date', { ascending: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    const page = (data ?? []) as Task[];
+    tasks.push(...page);
+    if (page.length < pageSize) break;
+  }
+
+  if (!tasks.length) return { tasks, assignments: [], serviceHours: [], workers: [] };
+
+  const taskIdBatches: string[][] = [];
+  for (let index = 0; index < tasks.length; index += pageSize) {
+    taskIdBatches.push(tasks.slice(index, index + pageSize).map(task => task.id));
+  }
+  const [assignmentResults, hoursResults] = await Promise.all([
+    Promise.all(taskIdBatches.map(ids => client.from('task_assignments')
+      .select('task_id,profile_id,assigned_hours,profiles(full_name,username,employee_id)')
+      .in('task_id', ids))),
+    Promise.all(taskIdBatches.map(ids => client.from('task_service_logs')
+      .select('task_id,actual_hours')
+      .in('task_id', ids))),
+  ]);
+  for (const result of [...assignmentResults, ...hoursResults]) {
+    if (result.error) throw result.error;
+  }
+
+  const assignments = assignmentResults.flatMap(result => result.data ?? []) as CalendarAssignment[];
+  const serviceHours = hoursResults.flatMap(result => result.data ?? []) as CalendarServiceHour[];
+  const workerIds = [...new Set([...tasks.map(task => task.assignee_id), ...assignments.map(item => item.profile_id)])];
+  const workerBatches: string[][] = [];
+  for (let index = 0; index < workerIds.length; index += pageSize) {
+    workerBatches.push(workerIds.slice(index, index + pageSize));
+  }
+  const workerResults = await Promise.all(workerBatches.map(ids => client.from('profiles')
+    .select('id,full_name')
+    .in('id', ids)));
+  for (const result of workerResults) {
+    if (result.error) throw result.error;
+  }
+
+  return {
+    tasks,
+    assignments,
+    serviceHours,
+    workers: workerResults.flatMap(result => result.data ?? []) as CalendarWorker[],
+  };
+}
+
+function TaskCalendarPage({ profile }: { profile: Profile | null }) {
+  const { t, i18n } = useTranslation();
+  const [month, setMonth] = useState(() => formatMonthKey(new Date()));
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['task-calendar', profile?.id, month],
+    enabled: Boolean(supabase && profile && month),
+    queryFn: () => loadTaskCalendar(month),
+  });
+  const days = getMonthCalendarDays(month);
+  const { year, month: monthNumber } = parseMonthKey(month);
+  const monthDate = new Date(year, monthNumber - 1, 1);
+  const monthLabel = new Intl.DateTimeFormat(i18n.language, { month: 'long', year: 'numeric' }).format(monthDate);
+  const weekdays = Array.from({ length: 7 }, (_, index) =>
+    new Intl.DateTimeFormat(i18n.language, { weekday: 'short' }).format(new Date(2024, 0, index + 1)));
+  const assignmentsByTask = new Map<string, CalendarAssignment[]>();
+  for (const assignment of data?.assignments ?? []) {
+    const group = assignmentsByTask.get(assignment.task_id) ?? [];
+    group.push(assignment);
+    assignmentsByTask.set(assignment.task_id, group);
+  }
+  const hoursByTask = new Map<string, number>();
+  for (const item of data?.serviceHours ?? []) {
+    hoursByTask.set(item.task_id, (hoursByTask.get(item.task_id) ?? 0) + Number(item.actual_hours ?? 0));
+  }
+  const workerNames = new Map((data?.workers ?? []).map(worker => [worker.id, worker.full_name]));
+  const changeMonth = (amount: number) => setMonth(formatMonthKey(new Date(year, monthNumber - 1 + amount, 1)));
+
+  return <>
+    <div className="page-heading">
+      <div><div className="date-overline"><CalendarDays size={14}/>{t('workspace')}</div><h1>{t('calendar')}</h1><p>{t('calendarHint')}</p></div>
+      <div className="calendar-controls">
+        <button type="button" className="icon-button" aria-label={t('previousMonth')} onClick={() => changeMonth(-1)}><ChevronLeft size={18}/></button>
+        <input className="calendar-month" type="month" aria-label={t('monthFilter')} value={month} onChange={event => { if (event.target.value) setMonth(event.target.value); }}/>
+        <button type="button" className="icon-button" aria-label={t('nextMonth')} onClick={() => changeMonth(1)}><ChevronRight size={18}/></button>
+      </div>
+    </div>
+    <section className="panel calendar-panel">
+      <div className="panel-heading"><div><h2>{monthLabel}</h2><span>{t('calendarTaskCount', { count: data?.tasks.length ?? 0 })}</span></div></div>
+      {isLoading ? <div className="skeleton-rows"><span/><span/><span/></div> : isError ? <div className="inline-error">{t('connectionError')}<button onClick={() => void refetch()}>{t('retry')}</button></div> :
+        <div className="calendar-scroll"><div className="calendar-grid">
+          <div className="calendar-weekdays">{weekdays.map(day => <b key={day}>{day}</b>)}</div>
+          <div className="calendar-days">
+            {days.map(day => {
+              const dayKey = formatDateKey(day);
+              const dayTasks = (data?.tasks ?? []).filter(task => taskOccursOnCalendarDay(task, dayKey));
+              const inMonth = day.getMonth() === monthNumber - 1;
+              return <div className={`calendar-day ${inMonth ? '' : 'calendar-day-outside'} ${dayTasks.length ? 'has-tasks' : ''}`} key={dayKey}>
+                <span className="calendar-day-number">{day.getDate()}</span>
+                <span className="calendar-day-count">{dayTasks.length ? t('calendarDayTaskCount', { count: dayTasks.length }) : ''}</span>
+                <div className="calendar-task-list">
+                  {dayTasks.map(task => <CalendarTaskCard
+                    key={task.id}
+                    task={task}
+                    assignments={assignmentsByTask.get(task.id) ?? []}
+                    actualHours={hoursByTask.get(task.id) ?? 0}
+                    workerNames={workerNames}
+                    t={t}
+                  />)}
+                </div>
+              </div>;
+            })}
+          </div>
+        </div></div>}
+    </section>
+  </>;
+}
+
+function CalendarTaskCard({ task, assignments, actualHours, workerNames, t }: {
+  task: Task;
+  assignments: CalendarAssignment[];
+  actualHours: number;
+  workerNames: Map<string, string>;
+  t: (key: string) => string;
+}) {
+  const members = assignments.length
+    ? [...new Set(assignments.map(item => firstRelated(item.profiles)?.full_name ?? workerNames.get(item.profile_id) ?? t('worker')))]
+    : [workerNames.get(task.assignee_id) ?? t('worker')];
+  const allocationValues = assignments.map(item => item.assigned_hours).filter((value): value is number => value !== null);
+  const allocatedHours = allocationValues.length
+    ? allocationValues.reduce((total, value) => total + Number(value), 0)
+    : task.assigned_hours;
+  const location = [
+    task.customer_address,
+    [task.apartment_block, task.apartment_number].filter(Boolean).join(' '),
+  ].filter(Boolean).join(' · ') || '—';
+
+  return <Link className="calendar-task-card" to={`/app/tasks/${task.id}`}>
+    <span className="calendar-task-reference">{task.reference}</span>
+    <b className="calendar-task-title">{task.title}</b>
+    <span className="calendar-task-detail">{t('location')}: {location}</span>
+    <span className="calendar-task-detail">{t('taskTeam')}: {members.join(', ')}</span>
+    <span className="calendar-task-hours">{t('allocatedTime')}: {allocatedHours === null || allocatedHours === undefined ? '—' : `${allocatedHours}h`} · {t('actualHours')}: {actualHours}h</span>
+    <span className="calendar-task-badges"><PriorityPill priority={task.priority}/><StatusPill status={task.status}/></span>
+  </Link>;
 }
 
 function SettingsPage({ profile }: { profile: Profile | null }) {
@@ -606,7 +763,7 @@ function TaskDetail({ profile }: { profile: Profile | null }) {
     </div>
     <section className="panel task-photo-panel"><div className="panel-heading"><div><h2>{t('taskPhotos')}</h2><span>{t('taskPhotosHint')}</span></div></div><div className="task-photo-groups"><div><h3>{t('assignmentPhotos')}</h3><TaskPhotoGrid photos={assignmentPhotos}/></div><div><h3>{t('completionPhotos')}</h3><TaskPhotoGrid photos={completionPhotos}/></div></div>
       {profile?.role!=='end_user'&&task.is_draft&&<div className="photo-upload-controls"><input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={event=>setAssignmentFiles(Array.from(event.target.files??[]))}/><button type="button" className="secondary-button" disabled={busy||!assignmentFiles.length} onClick={()=>void uploadPhotos('assignment',assignmentFiles)}>{t('uploadPhotos')}</button></div>}
-      {profile?.role==='end_user'&&isOwner&&['pending','in_progress','on_hold','skipped','returned'].includes(task.status)&&<div className="photo-upload-controls"><label>{t('addCompletionPhotos')}<input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple onChange={event=>setCompletionFiles(Array.from(event.target.files??[]))}/></label>{completionFiles.length>0&&<small>{t('photosSelected',{count:completionFiles.length})}</small>}<button type="button" className="secondary-button" disabled={busy||!completionFiles.length} onClick={()=>void uploadPhotos('completion',completionFiles)}>{t('uploadPhotos')}</button></div>}
+      {profile?.role==='end_user'&&isOwner&&['pending','in_progress','on_hold','skipped','returned','submitted'].includes(task.status)&&<div className="photo-upload-controls"><label>{t('addCompletionPhotos')}<input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple onChange={event=>setCompletionFiles(Array.from(event.target.files??[]))}/></label>{completionFiles.length>0&&<small>{t('photosSelected',{count:completionFiles.length})}</small>}<button type="button" className="secondary-button" disabled={busy||!completionFiles.length} onClick={()=>void uploadPhotos('completion',completionFiles)}>{t('uploadPhotos')}</button></div>}
     </section>
     {profile?.id && (profile.role==='end_user' || services.length>0) && <section className="panel service-progress"><h3>{t('servicesAndHours')}</h3>{services.map(service=>{const progress=serviceProgress[service.id]??{hours:'',completed:false,comment:''};const mismatch=service.assigned_hours!=null&&Number(progress.hours||0)>Number(service.assigned_hours);const workerCanEdit=profile.role==='end_user'&&isOwner&&['pending','in_progress','on_hold','skipped','returned'].includes(task.status);return <div className={`service-progress-row ${mismatch?'hours-over':''}`} key={service.id}><div><b>{firstRelated(service.cleaning_areas)?.name||''}{firstRelated(service.cleaning_subtasks)?.name?` · ${firstRelated(service.cleaning_subtasks)?.name}`:''}</b><small>{t('assignedHours')}: {service.assigned_hours??'—'}</small></div>{workerCanEdit?<><input aria-label={t('actualHours')} type="number" min="0" step="0.25" value={progress.hours} onChange={event=>setServiceProgress(current=>({...current,[service.id]:{...progress,hours:event.target.value}}))}/><label className="service-complete"><input type="checkbox" checked={progress.completed} onChange={event=>setServiceProgress(current=>({...current,[service.id]:{...progress,completed:event.target.checked}}))}/>{t('completed')}</label><input className="service-worker-comment" aria-label={t('workerComment')} value={progress.comment} onChange={event=>setServiceProgress(current=>({...current,[service.id]:{...progress,comment:event.target.value}}))} placeholder={t('workerComment')}/><button type="button" className="subtle-button" disabled={busy} onClick={()=>void saveServiceProgress(service.id)}>{t('save')}</button></>:<div className="service-log-readonly">{serviceLogs.filter(log=>log.selection_id===service.id).map(log=><small key={log.profile_id}>{firstRelated(log.profiles)?.full_name||t('worker')}: {log.actual_hours??'—'}h · {log.is_completed?t('completed'):t('incomplete')}</small>)}</div>}{mismatch&&<span className="hours-warning">!</span>}</div>;})}</section>}
     <div className="budget-summary"><div><span>{t('budget')}</span><b>{budget === null ? t('noLimit') : formatMoney(budget, task.currency, 'en-GB')}</b></div><div><span>{t('spent')}</span><b>{formatMoney(total, task.currency, 'en-GB')}</b></div><div><span>{t('remaining')}</span><b className={overBudget ? 'over-budget-text' : ''}>{balance.remaining === null ? '—' : formatMoney(balance.remaining, task.currency, 'en-GB')}</b></div></div>{overBudget && <div className="over-budget-alert"><CircleDollarSign size={17} /><span><b>{t('limitExceeded')}</b> · {t('overage')}: {formatMoney(balance.overage, task.currency, 'en-GB')}</span></div>}{notice && <div className="form-error proof-error" role="alert">{notice}</div>}<div className="expense-table-wrap"><table className="expense-table"><thead><tr><th>{t('date')}</th><th>{t('category')}</th><th>{t('description')}</th><th>{t('quantity')}</th><th>{t('lineTotal')}</th><th>{t('proof')}</th></tr></thead><tbody>{expenseQuery.data?.map(line => <tr key={line.id}><td>{line.expense_date}</td><td>{line.category}</td><td>{line.description}</td><td>{line.quantity}</td><td>{formatMoney(String(line.line_total), task.currency, 'en-GB')}</td><td>{proofQuery.data?.filter(proof => proof.expense_line_id === line.id).map(proof => <ProofLink key={proof.id} path={proof.object_path} name={proof.original_name} />)}</td></tr>)}</tbody></table>{!expenseQuery.data?.length && <div className="empty-expenses">{t('noTasksHint')}</div>}</div><div className="task-detail-meta"><div><span>{t('priority')}</span><PriorityPill priority={task.priority} /></div><div><span>{t('dueDate')}</span><b>{new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium' }).format(new Date(`${task.due_date}T12:00:00`))}</b></div></div><div className="history-block"><h3>{t('statusHistory')}</h3>{historyQuery.data?.map(item => <div className="history-entry" key={item.id}><StatusPill status={item.to_status}/><span>{new Intl.DateTimeFormat('en-GB',{dateStyle:'medium',timeStyle:'short'}).format(new Date(item.created_at))}</span>{item.comment && <p>{item.comment}</p>}</div>)}</div></div><aside className="panel detail-actions">{task.is_draft&&profile?.role!=='end_user'?<><h2>{t('finalizeDraft')}</h2><p>{t('finalizeDraftHint')}</p><div className="draft-worker-picker">{(workersQuery.data??[]).map(worker=><label key={worker.id}><input type="checkbox" checked={selectedAssignees.includes(worker.id)} onChange={()=>setSelectedAssignees(current=>current.includes(worker.id)?current.filter(id=>id!==worker.id):[...current,worker.id])}/><span>{worker.full_name}</span><small>{worker.employee_id||`@${worker.username}`}</small></label>)}</div><button className="primary-button full-button" disabled={busy||!selectedAssignees.length} onClick={()=>void finalizeDraft()}>{busy?t('saving'):t('finalizeAndAssign')} <ArrowRight size={15}/></button></>:<><h2>{t('nextSteps')}</h2><p>{t('nextStepsSubtitle')}</p>{isOwner && ['pending','returned'].includes(task.status) && <button className="primary-button full-button" disabled={busy} onClick={() => void transition('in_progress')}>{t('inProgress')}</button>}{isOwner && ['pending','in_progress','on_hold','skipped','returned'].includes(task.status) &&
@@ -670,6 +827,7 @@ export default function App() {
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: ['tasks'] }),
         queryClient.invalidateQueries({ queryKey: ['task-register'] }),
+        queryClient.invalidateQueries({ queryKey: ['task-calendar'] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard-metrics'] }),
         queryClient.invalidateQueries({ queryKey: ['report-assignments'] }),
         ...(taskId ? [
@@ -712,7 +870,7 @@ export default function App() {
   if (!ready) return <div className="splash"><img className="splash-logo" src={axaLogo} alt="" /><span>AXA Cleaning</span></div>;
   if (!user) return <Routes><Route path="/forgot-password" element={<ForgotPassword />} /><Route path="*" element={<Login />} /></Routes>;
   if (profile?.must_reset_password || location.pathname === '/reset-password') return <ResetPassword onComplete={() => setProfile(current => current ? { ...current, must_reset_password: false } : current)} />;
-  return <AppShell user={user} profile={profile} onSignOut={() => void signOut()}><Routes><Route path="/app" element={<Dashboard profile={profile} />} /><Route path="/app/tasks" element={<TaskListPage profile={profile} />} /><Route path="/app/tasks/new" element={<CreateTaskPage profile={profile} />} /><Route path="/app/tasks/:taskId" element={<TaskPage profile={profile}/>} /><Route path="/app/reviews" element={<ReviewQueue profile={profile} />} /><Route path="/app/people" element={profile?.role === 'super_admin' ? <PeoplePage profile={profile} /> : <div className="panel empty-state">{t('noPermission')}</div>} /><Route path="/app/reports" element={<ReportsPage profile={profile} />} /><Route path="/app/audit" element={profile?.role === 'super_admin' ? <AuditPage /> : <div className="panel empty-state">{t('noPermission')}</div>} /><Route path="/app/settings" element={<SettingsPage profile={profile} />} /><Route path="*" element={<Dashboard profile={profile} />} /></Routes></AppShell>;
+  return <AppShell user={user} profile={profile} onSignOut={() => void signOut()}><Routes><Route path="/app" element={<Dashboard profile={profile} />} /><Route path="/app/tasks" element={<TaskListPage profile={profile} />} /><Route path="/app/tasks/new" element={<CreateTaskPage profile={profile} />} /><Route path="/app/tasks/:taskId" element={<TaskPage profile={profile}/>} /><Route path="/app/calendar" element={profile && profile.role !== 'end_user' ? <TaskCalendarPage profile={profile} /> : <div className="panel empty-state">{t('noPermission')}</div>} /><Route path="/app/reviews" element={<ReviewQueue profile={profile} />} /><Route path="/app/people" element={profile?.role === 'super_admin' ? <PeoplePage profile={profile} /> : <div className="panel empty-state">{t('noPermission')}</div>} /><Route path="/app/reports" element={<ReportsPage profile={profile} />} /><Route path="/app/audit" element={profile?.role === 'super_admin' ? <AuditPage /> : <div className="panel empty-state">{t('noPermission')}</div>} /><Route path="/app/settings" element={<SettingsPage profile={profile} />} /><Route path="*" element={<Dashboard profile={profile} />} /></Routes></AppShell>;
 }
 
 function ForgotPassword() {
