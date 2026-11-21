@@ -5,7 +5,7 @@ import { useForm, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
-import { Activity, ArrowRight, BadgeCheck, Bell, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardList, Clock3, FileText, Filter, LayoutDashboard, LogOut, Menu, Pencil, Plus, Search, Settings, ShieldCheck, Users, WalletCards } from 'lucide-react';
+import { Activity, ArrowRight, BadgeCheck, Bell, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardList, Clock3, FileText, Filter, LayoutDashboard, LogOut, Menu, Pencil, Plus, Search, Settings, ShieldCheck, Trash2, Users, WalletCards } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import Decimal from 'decimal.js';
@@ -166,7 +166,7 @@ function Dashboard({ profile }: { profile: Profile | null }) {
         <MetricCard label={t('overBudget')} value={metrics?.over_budget_tasks ?? '—'} icon={CircleDollarSign} tone="green" />
       </section>
       <section className="dashboard-grid"><div className="panel tasks-panel"><div className="panel-heading"><div><h2>{t('teamTasks')}</h2><span>{t('teamTasksSubtitle')}</span></div><div className="panel-actions"><button className="subtle-button"><Filter size={15} />{t('filter')}</button><Link className="view-link" to="/app/tasks">{t('viewAll')} <ArrowRight size={15} /></Link></div></div>
-        <TaskTable tasks={filteredTasks.slice(0, 6)} isLoading={isLoading} isError={isError} onRetry={() => void refetch()} />
+        <TaskTable tasks={filteredTasks.slice(0, 6)} isLoading={isLoading} isError={isError} onRetry={() => void refetch()} profile={profile} />
       </div><aside className="right-column"><div className="panel review-panel"><div className="panel-heading compact"><div><h2>{t('needsReview')}</h2><span>{t('reviewSubtitle')}</span></div><div className="review-count">{submitted.length.toString().padStart(2, '0')}</div></div>{submitted.length ? submitted.slice(0, 3).map(task => <TaskMini key={task.id} task={task} />) : <div className="empty-mini"><span className="empty-check"><Check size={15} /></span><b>{t('allCaughtUp')}</b><span>{t('newSubmissions')}</span></div>}<Link className="review-link" to="/app/reviews">{t('openReviewQueue')} <ArrowRight size={14} /></Link></div>
         <div className="panel activity-panel"><div className="panel-heading compact"><div><h2>{t('recentActivity')}</h2><span>{t('latestUpdates')}</span></div><button className="icon-button" aria-label={t('moreActivity')}>···</button></div><div className="activity-empty"><span className="activity-line"><i /></span><p>{t('emptyActivity')}</p></div></div></aside></section>
     </> : <>
@@ -178,12 +178,42 @@ function Dashboard({ profile }: { profile: Profile | null }) {
   </>;
 }
 
-function TaskTable({ tasks, isLoading, isError, onRetry }: { tasks: Task[]; isLoading: boolean; isError: boolean; onRetry: () => void }) {
+function TaskTable({ tasks, isLoading, isError, onRetry, profile }: { tasks: Task[]; isLoading: boolean; isError: boolean; onRetry: () => void; profile: Profile | null }) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState('');
+  const canDeleteTasks = profile?.role === 'super_admin';
+  const deleteTask = async (task: Task) => {
+    if (!supabase || !canDeleteTasks || deletingTaskId) return;
+    if (!window.confirm(t('deleteTaskConfirm', { reference: task.reference }))) return;
+    setDeletingTaskId(task.id);
+    setDeleteError('');
+    try {
+      const { error } = await supabase.rpc('delete_task', { target_task: task.id, expected_version: task.version });
+      if (error) {
+        setDeleteError(error.code === '40001' ? t('taskConflict') : t('deleteTaskFailed'));
+        return;
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+        queryClient.invalidateQueries({ queryKey: ['task-register'] }),
+        queryClient.invalidateQueries({ queryKey: ['task-calendar'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-metrics'] }),
+        queryClient.invalidateQueries({ queryKey: ['task', task.id] }),
+        queryClient.invalidateQueries({ queryKey: ['task-exception', task.id] }),
+      ]);
+    } catch (error) {
+      console.error('Task deletion failed', error);
+      setDeleteError(t('deleteTaskFailed'));
+    } finally {
+      setDeletingTaskId(null);
+    }
+  };
   if (isLoading) return <div className="skeleton-rows" aria-label={t('loading')}><span /><span /><span /><span /></div>;
   if (isError) return <div className="inline-error"><span>{t('connectionError')}</span><button onClick={onRetry}>{t('retry')}</button></div>;
-  if (!tasks.length) return <EmptyTasks t={t} />;
-  return <div className="table-scroll"><table className="task-table"><thead><tr><th>{t('taskName')}</th><th>{t('assignee')}</th><th>{t('priority')}</th><th>{t('status')}</th><th>{t('dueDate')}</th><th /></tr></thead><tbody>{tasks.map(task => <tr key={task.id}><td><Link className="task-title-cell" to={`/app/tasks/${task.id}`}><span className="task-code">{task.reference}</span><b>{task.title}</b></Link></td><td><span className="table-assignee"><span className="assignee-avatar">{task.assignee_id.slice(0, 1).toUpperCase()}</span>{t('teamMember')}</span></td><td><PriorityPill priority={task.priority} /></td><td>{task.is_draft?<span className="draft-badge">{t('draft')}</span>:<StatusPill status={task.status} />}</td><td className="due-date">{new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(`${task.due_date}T12:00:00`))}</td><td><Link className="row-arrow" to={`/app/tasks/${task.id}`} aria-label={`${t('taskDetails')}: ${task.title}`}><ArrowRight size={16} /></Link></td></tr>)}</tbody></table></div>;
+  if (!tasks.length) return <>{deleteError && <div className="form-error" role="alert">{deleteError}</div>}<EmptyTasks t={t} /></>;
+  return <>{deleteError && <div className="form-error" role="alert">{deleteError}</div>}<div className="table-scroll"><table className="task-table"><thead><tr><th>{t('taskName')}</th><th>{t('assignee')}</th><th>{t('priority')}</th><th>{t('status')}</th><th>{t('dueDate')}</th><th />{canDeleteTasks&&<th>{t('actions')}</th>}</tr></thead><tbody>{tasks.map(task => <tr key={task.id}><td><Link className="task-title-cell" to={`/app/tasks/${task.id}`}><span className="task-code">{task.reference}</span><b>{task.title}</b></Link></td><td><span className="table-assignee"><span className="assignee-avatar">{task.assignee_id.slice(0, 1).toUpperCase()}</span>{t('teamMember')}</span></td><td><PriorityPill priority={task.priority} /></td><td>{task.is_draft?<span className="draft-badge">{t('draft')}</span>:<StatusPill status={task.status} />}</td><td className="due-date">{new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(`${task.due_date}T12:00:00`))}</td><td><Link className="row-arrow" to={`/app/tasks/${task.id}`} aria-label={`${t('taskDetails')}: ${task.title}`}><ArrowRight size={16} /></Link></td>{canDeleteTasks&&<td><button type="button" className="icon-button task-delete-button" aria-label={`${t('deleteTask')} ${task.reference}`} title={t('deleteTask')} disabled={deletingTaskId!==null} onClick={()=>void deleteTask(task)}>{deletingTaskId===task.id?t('deleting'):<Trash2 size={16}/>}</button></td>}</tr>)}</tbody></table></div></>;
 }
 function TaskMini({ task }: { task: Task }) { return <Link className="task-mini" to={`/app/tasks/${task.id}`}><span className="mini-icon"><FileText size={16} /></span><span className="mini-copy"><b>{task.title}</b><small>{task.reference}</small></span><ArrowRight size={15} /></Link>; }
 function TaskList({ tasks }: { tasks: Task[] }) { return <div className="task-card-list">{tasks.map(task => <TaskCard key={task.id} task={task} />)}</div>; }
@@ -210,7 +240,7 @@ function TaskListPage({ profile }: { profile: Profile | null }) {
   const url = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8'}));
   const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'taskflow-tasks.csv'; anchor.click(); URL.revokeObjectURL(url); };
   const reset = () => { setQuery(''); setStatus('all'); setAssignee('all'); setPriority('all'); setMonth(''); setFromDate(''); setToDate(''); setOverBudgetOnly(false); };
-  return <><div className="page-heading"><div><div className="date-overline"><ClipboardList size={14} /> {t('workspace')}</div><h1>{t('myTasks')}</h1><p>{t('tasksSubtitle')}</p></div>{profile?.role !== 'end_user' && <Link className="primary-button create-button" to="/app/tasks/new"><Plus size={17} />{t('newTask')}</Link>}</div><div className="panel list-page-panel"><div className="list-toolbar filter-toolbar"><label className="list-search"><Search size={16} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder={t('searchTasks')} /></label><select aria-label={t('status')} value={status} onChange={e => setStatus(e.target.value)}><option value="all">{t('allStatuses')}</option>{['pending','in_progress','on_hold','skipped','submitted','verified','returned','cancelled'].map(s => <option value={s} key={s}>{t(({in_progress:'inProgress',on_hold:'onHold',cancelled:'cancelled'} as Record<string,string>)[s] ?? s)}</option>)}</select>{profile?.role !== 'end_user' && <select aria-label={t('assignee')} value={assignee} onChange={e => setAssignee(e.target.value)}><option value="all">{t('allPeople')}</option>{people.map(person => <option value={person.id} key={person.id}>{person.full_name}</option>)}</select>}<select aria-label={t('priority')} value={priority} onChange={e => setPriority(e.target.value)}><option value="all">{t('allPriorities')}</option>{['urgent','high','medium','low'].map(value=><option key={value} value={value}>{t(value)}</option>)}</select><label className="month-filter">{t('month')}<input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label><label className="date-filter">{t('from')}<input type="date" value={fromDate} onChange={e=>setFromDate(e.target.value)}/></label><label className="date-filter">{t('to')}<input type="date" value={toDate} onChange={e=>setToDate(e.target.value)}/></label><label className="budget-filter"><input type="checkbox" checked={overBudgetOnly} onChange={e=>setOverBudgetOnly(e.target.checked)}/>{t('overBudget')}</label><button className="subtle-button" onClick={reset}>{t('resetFilters')}</button>{profile?.role !== 'end_user' && <button className="subtle-button" onClick={()=>void exportTasks()}>{t('exportCsv')}</button>}</div>{exportError && <div className="form-error export-error" role="alert">{exportError}</div>}<TaskTable tasks={tasks} isLoading={isLoading} isError={isError} onRetry={() => void refetch()} />{taskPages.hasNextPage&&<div className="pagination-control"><button className="subtle-button" disabled={taskPages.isFetchingNextPage} onClick={()=>void taskPages.fetchNextPage()}>{taskPages.isFetchingNextPage?t('loading'):t('loadMoreTasks')}</button></div>}</div></>;
+  return <><div className="page-heading"><div><div className="date-overline"><ClipboardList size={14} /> {t('workspace')}</div><h1>{t('myTasks')}</h1><p>{t('tasksSubtitle')}</p></div>{profile?.role !== 'end_user' && <Link className="primary-button create-button" to="/app/tasks/new"><Plus size={17} />{t('newTask')}</Link>}</div><div className="panel list-page-panel"><div className="list-toolbar filter-toolbar"><label className="list-search"><Search size={16} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder={t('searchTasks')} /></label><select aria-label={t('status')} value={status} onChange={e => setStatus(e.target.value)}><option value="all">{t('allStatuses')}</option>{['pending','in_progress','on_hold','skipped','submitted','verified','returned','cancelled'].map(s => <option value={s} key={s}>{t(({in_progress:'inProgress',on_hold:'onHold',cancelled:'cancelled'} as Record<string,string>)[s] ?? s)}</option>)}</select>{profile?.role !== 'end_user' && <select aria-label={t('assignee')} value={assignee} onChange={e => setAssignee(e.target.value)}><option value="all">{t('allPeople')}</option>{people.map(person => <option value={person.id} key={person.id}>{person.full_name}</option>)}</select>}<select aria-label={t('priority')} value={priority} onChange={e => setPriority(e.target.value)}><option value="all">{t('allPriorities')}</option>{['urgent','high','medium','low'].map(value=><option key={value} value={value}>{t(value)}</option>)}</select><label className="month-filter">{t('month')}<input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label><label className="date-filter">{t('from')}<input type="date" value={fromDate} onChange={e=>setFromDate(e.target.value)}/></label><label className="date-filter">{t('to')}<input type="date" value={toDate} onChange={e=>setToDate(e.target.value)}/></label><label className="budget-filter"><input type="checkbox" checked={overBudgetOnly} onChange={e=>setOverBudgetOnly(e.target.checked)}/>{t('overBudget')}</label><button className="subtle-button" onClick={reset}>{t('resetFilters')}</button>{profile?.role !== 'end_user' && <button className="subtle-button" onClick={()=>void exportTasks()}>{t('exportCsv')}</button>}</div>{exportError && <div className="form-error export-error" role="alert">{exportError}</div>}<TaskTable tasks={tasks} isLoading={isLoading} isError={isError} onRetry={() => void refetch()} profile={profile} />{taskPages.hasNextPage&&<div className="pagination-control"><button className="subtle-button" disabled={taskPages.isFetchingNextPage} onClick={()=>void taskPages.fetchNextPage()}>{taskPages.isFetchingNextPage?t('loading'):t('loadMoreTasks')}</button></div>}</div></>;
 }
 
 function ReviewQueue({ profile }: { profile: Profile | null }) {
@@ -242,7 +272,7 @@ function ReportsPage({ profile }: { profile: Profile | null }) {
   return <><div className="page-heading"><div><div className="date-overline"><WalletCards size={14}/>{t('workspace')}</div><h1>{t('reports')}</h1><p>{t('reportsSubtitle')}</p></div><div className="calendar-heading-actions">{profile?.role !== 'end_user'&&<Link className="secondary-button" to="/app/calendar"><CalendarDays size={16}/>{t('calendar')}</Link>}<button className="primary-button create-button" onClick={exportReport} disabled={isLoading||isError}>{t('exportCsv')}</button></div></div>
     <section className="metrics-grid"><MetricCard label={t('totalTasks')} value={tasks.length} icon={ClipboardList} tone="purple"/><MetricCard label={t('awaitingReview')} value={tasks.filter(task=>task.status==='submitted').length} icon={BadgeCheck} tone="amber"/><MetricCard label={t('completedTasks')} value={tasks.filter(task=>task.status==='verified').length} icon={Check} tone="green"/><MetricCard label={t('spent')} value={formatMoney(totalSpent,'EUR','en-GB')} icon={CircleDollarSign} tone="blue"/></section>
     <section className="panel report-panel"><div className="panel-heading"><div><h2>{t('workerHours')}</h2><span>{t('workerHoursHint')}</span></div></div><div className="worker-hours-list">{workerHours.map(row=><div className="worker-hours-row" key={row.profile_id}><b>{row.name}</b><span>{row.employee_id||'—'}</span><span>{t('assignedHours')}: {row.assigned}</span><span>{t('actualHours')}: {row.actual}</span></div>)}{!workerHours.length&&<div className="empty-expenses">{t('noTasksHint')}</div>}</div></section>
-    <section className="panel report-panel"><div className="panel-heading"><div><h2>{t('taskOverview')}</h2><span>{t('reportsSubtitle')}</span></div></div><TaskTable tasks={tasks.slice(0,50)} isLoading={isLoading} isError={isError} onRetry={()=>void refetch()}/></section></>;
+    <section className="panel report-panel"><div className="panel-heading"><div><h2>{t('taskOverview')}</h2><span>{t('reportsSubtitle')}</span></div></div><TaskTable tasks={tasks.slice(0,50)} isLoading={isLoading} isError={isError} onRetry={()=>void refetch()} profile={profile}/></section></>;
 }
 
 type CalendarAssignment = { task_id: string; profile_id: string; assigned_hours: number | null; profiles: Related<EmployeeSummary> };
@@ -402,12 +432,10 @@ function CalendarTaskCard({ task, assignments, actualHours, workerNames, t }: {
   ].filter(Boolean).join(' · ') || '—';
 
   return <Link className="calendar-task-card" to={`/app/tasks/${task.id}`}>
-    <span className="calendar-task-reference">{task.reference}</span>
+    <span className="calendar-task-topline"><span className="calendar-task-reference">{task.reference}</span><span className="calendar-task-badges"><PriorityPill priority={task.priority}/><StatusPill status={task.status}/></span></span>
     <b className="calendar-task-title">{task.title}</b>
-    <span className="calendar-task-detail">{t('location')}: {location}</span>
-    <span className="calendar-task-detail">{t('taskTeam')}: {members.join(', ')}</span>
+    <span className="calendar-task-detail">{t('location')}: {location} · {t('taskTeam')}: {members.join(', ')}</span>
     <span className="calendar-task-hours">{t('allocatedTime')}: {allocatedHours === null || allocatedHours === undefined ? '—' : `${allocatedHours}h`} · {t('actualHours')}: {actualHours}h</span>
-    <span className="calendar-task-badges"><PriorityPill priority={task.priority}/><StatusPill status={task.status}/></span>
   </Link>;
 }
 
@@ -543,10 +571,18 @@ async function uploadTaskPhotos(task: Task, files: File[], photoType: 'assignmen
   } catch (error) {
     if (pendingPath) {
       const { error: cleanupError } = await supabase.storage.from('task-proofs').remove([pendingPath]);
-      if (cleanupError) throw cleanupError;
+      if (cleanupError) console.error('Task photo upload cleanup failed', cleanupError);
     }
     throw error;
   }
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
+    return error.message;
+  }
+  return '';
 }
 
 function CreateTaskPage({ profile }: { profile: Profile | null }) {
@@ -680,7 +716,7 @@ function TaskDetail({ profile }: { profile: Profile | null }) {
     if(!task||!files.length)return;
     setBusy(true);setNotice('');
     try { await uploadTaskPhotos(task,files,type);setAssignmentFiles([]);setCompletionFiles([]);await qc.invalidateQueries({queryKey:['task-photos',taskId]}); }
-    catch { await qc.invalidateQueries({queryKey:['task-photos',taskId]});setNotice(t('photoUploadFailed')); }
+    catch(error) { await qc.invalidateQueries({queryKey:['task-photos',taskId]});const details=getErrorMessage(error);console.error('Task photo upload failed',error);setNotice(details?`${t('photoUploadFailed')} ${details}`:t('photoUploadFailed')); }
     finally { setBusy(false); }
   };
   const finalizeDraft = async () => {
@@ -724,7 +760,7 @@ function TaskDetail({ profile }: { profile: Profile | null }) {
     setBusy(true); setNotice('');
     if(next==='submitted'&&completionFiles.length){
       try { await uploadTaskPhotos(task,completionFiles,'completion');setCompletionFiles([]);await qc.invalidateQueries({queryKey:['task-photos',taskId]}); }
-      catch { await qc.invalidateQueries({queryKey:['task-photos',taskId]});setNotice(t('photoUploadFailed'));setBusy(false);return; }
+      catch(error) { await qc.invalidateQueries({queryKey:['task-photos',taskId]});const details=getErrorMessage(error);console.error('Task photo upload failed',error);setNotice(details?`${t('photoUploadFailed')} ${details}`:t('photoUploadFailed'));setBusy(false);return; }
     }
     const { error } = await supabase.rpc('transition_task', { target_task: task.id, next_status: next, reason: reason.trim() || null, expected_version: task.version });
     if (error) setNotice(error.code === '40001' ? t('taskConflict') : error.message || t('transitionFailed')); else { setReason(''); await Promise.all([qc.invalidateQueries({ queryKey: ['task', taskId] }), qc.invalidateQueries({ queryKey: ['tasks'] })]); }
