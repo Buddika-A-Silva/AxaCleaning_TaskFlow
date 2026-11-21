@@ -315,7 +315,7 @@
   "assignTask": "Assign task",
   "taskEstimateOptional": "Task time estimate (optional)",
   "serviceEstimateOptional": "Estimate (optional)",
-  "serviceEstimateOptionalHint": "Time estimates are optional. Workers will enter actual hours for each service when completing the task.",
+  "serviceEstimateOptionalHint": "Select only the service areas and tasks that apply; you do not need to choose from every area. Time estimates are optional, and workers will enter actual hours for each selected service when completing the task.",
   "customerDetailsRequired": "Enter the customer name, apartment and block numbers, full address, and contact number.",
   "invalidAssignedHours": "Enter a valid estimate greater than zero, or leave it blank.",
   "serviceHoursRequired": "Select at least one cleaning service.",
