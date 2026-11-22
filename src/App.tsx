@@ -828,7 +828,7 @@ function UserForm({ role, people, user, busy, onCancel, onSubmit }: { role: Prof
 }
 
 function TaskDetail({ profile }: { profile: Profile | null }) {
-  const { taskId = '' } = useParams(); const { t } = useTranslation(); const qc = useQueryClient(); const location = useLocation(); const [reason, setReason] = useState(''); const [busy, setBusy] = useState(false); const [notice, setNotice] = useState(location.state?.photoUploadFailed ? t('photoUploadFailed') : ''); const [expenseOpen, setExpenseOpen] = useState(false); const [expenseDate, setExpenseDate] = useState(new Date().toISOString().slice(0,10)); const [category, setCategory] = useState(''); const [expenseDescription, setExpenseDescription] = useState(''); const [quantity, setQuantity] = useState('1'); const [unitAmount, setUnitAmount] = useState(''); const [proofFile, setProofFile] = useState<File | null>(null); const [completionFiles, setCompletionFiles] = useState<File[]>([]); const [assignmentFiles, setAssignmentFiles] = useState<File[]>([]); const [serviceProgress, setServiceProgress] = useState<Record<string, { hours: string; completed: boolean; comment: string }>>({}); const [equipmentReturns, setEquipmentReturns] = useState<Record<string, string>>({}); const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
+  const { taskId = '' } = useParams(); const { t } = useTranslation(); const qc = useQueryClient(); const location = useLocation(); const [reason, setReason] = useState(''); const [nextWorkStatus, setNextWorkStatus] = useState(''); const [busy, setBusy] = useState(false); const [notice, setNotice] = useState(location.state?.photoUploadFailed ? t('photoUploadFailed') : ''); const [expenseOpen, setExpenseOpen] = useState(false); const [expenseDate, setExpenseDate] = useState(new Date().toISOString().slice(0,10)); const [category, setCategory] = useState(''); const [expenseDescription, setExpenseDescription] = useState(''); const [quantity, setQuantity] = useState('1'); const [unitAmount, setUnitAmount] = useState(''); const [proofFile, setProofFile] = useState<File | null>(null); const [completionFiles, setCompletionFiles] = useState<File[]>([]); const [assignmentFiles, setAssignmentFiles] = useState<File[]>([]); const [serviceProgress, setServiceProgress] = useState<Record<string, { hours: string; completed: boolean; comment: string }>>({}); const [equipmentReturns, setEquipmentReturns] = useState<Record<string, string>>({}); const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
   const taskQuery = useQuery({ queryKey: ['task', taskId], enabled: Boolean(supabase && taskId), queryFn: async () => { const { data, error } = await supabase!.from('tasks').select('*').eq('id', taskId).single(); if (error) throw error; return data as Task; } });
   const expenseQuery = useQuery({ queryKey: ['expenses', taskId], enabled: Boolean(supabase && taskId), queryFn: async () => { const { data, error } = await supabase!.from('expense_lines').select('id,category,description,quantity,unit_amount,line_total,expense_date').eq('task_id', taskId).is('deleted_at', null).order('expense_date'); if (error) throw error; return data ?? []; } });
   const proofQuery = useQuery({ queryKey: ['proofs', taskId], enabled: Boolean(supabase && taskId), queryFn: async () => { const { data, error } = await supabase!.from('expense_proofs').select('id,task_id,expense_line_id,object_path,original_name,mime_type,size_bytes').eq('task_id', taskId).is('deleted_at', null); if (error) throw error; return data ?? []; } });
@@ -842,6 +842,7 @@ function TaskDetail({ profile }: { profile: Profile | null }) {
   useEffect(()=>{if(serviceLogsQuery.data&&profile){setServiceProgress(Object.fromEntries(serviceLogsQuery.data.filter(log=>log.profile_id===profile.id).map(log=>[log.selection_id,{hours:log.actual_hours==null?'':String(log.actual_hours),completed:log.is_completed,comment:log.worker_comment??''}])));}},[serviceLogsQuery.data,profile]);
   useEffect(()=>{if(equipmentQuery.data)setEquipmentReturns(Object.fromEntries(equipmentQuery.data.map(item=>[item.equipment_id,item.returned_quantity==null?'':String(item.returned_quantity)])));},[equipmentQuery.data]);
   const task = taskQuery.data;
+  useEffect(()=>{if(task)setNextWorkStatus(task.status);},[task]);
   const uploadPhotos = async (type:'assignment'|'completion', files:File[]) => {
     if(!task||!files.length)return;
     setBusy(true);setNotice('');
@@ -922,7 +923,7 @@ function TaskDetail({ profile }: { profile: Profile | null }) {
       return;
     }
     const { error } = await supabase.rpc('transition_task', { target_task: task.id, next_status: next, reason: reason.trim() || null, expected_version: task.version });
-    if (error) setNotice(error.code === '40001' ? t('taskConflict') : error.message || t('transitionFailed')); else { setReason(''); await Promise.all([qc.invalidateQueries({ queryKey: ['task', taskId] }), qc.invalidateQueries({ queryKey: ['tasks'] })]); }
+    if (error) setNotice(error.code === '40001' ? t('taskConflict') : error.message || t('transitionFailed')); else { setReason(''); await Promise.all([qc.invalidateQueries({ queryKey: ['task', taskId] }), qc.invalidateQueries({ queryKey: ['task-history', taskId] }), qc.invalidateQueries({ queryKey: ['tasks'] })]); }
     setBusy(false);
   };
   const saveExpense = async (event: FormEvent<HTMLFormElement>) => {
@@ -949,6 +950,12 @@ function TaskDetail({ profile }: { profile: Profile | null }) {
   const assignments=assignmentsQuery.data??[];const currentAssignment=assignments.find(assignment=>assignment.profile_id===profile?.id);const currentWorkerSubmitted=Boolean(currentAssignment?.worker_submitted_at);const services=servicesQuery.data??[];const serviceLogs=serviceLogsQuery.data??[];const taskPhotos=photosQuery.data??[];const assignmentPhotos=taskPhotos.filter(photo=>photo.photo_type==='assignment');const completionPhotos=taskPhotos.filter(photo=>photo.photo_type==='completion');const equipment=equipmentQuery.data??[];
   const canEditTask=Boolean(assignmentsQuery.isSuccess&&profile&&profile.role!=='end_user'&&(profile.role==='super_admin'||task.assigner_id===profile.id)&&['pending','in_progress','on_hold','skipped','returned'].includes(task.status)&&!assignments.some(assignment=>assignment.worker_submitted_at));
   const isOwner = profile?.id === task.assignee_id || assignments.some(assignment => assignment.profile_id === profile?.id); const total = sumMoney(expenseQuery.data?.map(line => String(line.line_total)) ?? []); const budget = task.budget_limit; const balance = budgetBalance(budget, total); const overBudget = budget !== null && new Decimal(total).greaterThan(budget);
+  const workStatuses=['pending','in_progress','on_hold','skipped','returned'] as const;
+  const canChangeWorkStatus=Boolean(profile&&!task.is_draft&&workStatuses.includes(task.status as typeof workStatuses[number])&&(
+    profile.role==='end_user'
+      ? isOwner&&!currentWorkerSubmitted&&currentAssignment
+      : (profile.role==='super_admin'||task.assigner_id===profile.id)
+  ));
   return <><div className="detail-back"><Link to="/app/tasks">← {t('myTasks')}</Link></div><div className="page-heading detail-heading"><div><div className="date-overline">{task.reference} <span>·</span> {task.is_draft?t('draftTask'):t('taskDetails')}</div><h1>{task.title}</h1><p>{task.description}</p></div><div className="task-heading-actions">{canEditTask&&<Link className="subtle-button" to={`/app/tasks/${task.id}/edit`}><Pencil size={15}/>{t('editTask')}</Link>}{task.is_draft?<span className="draft-badge">{t('draft')}</span>:<StatusPill status={task.status} />}</div></div><div className="detail-grid"><div className="panel detail-main"><div className="panel-heading"><div><h2>{t('expenseTotal')}</h2><span>{t('expenseSubtitle')}</span></div>{!task.is_draft&&isOwner && ['pending','in_progress','on_hold','skipped','returned'].includes(task.status) && <button className="subtle-button" onClick={() => setExpenseOpen(!expenseOpen)}><Plus size={15} />{t('addExpense')}</button>}</div>
     {expenseOpen && <form className="expense-form" onSubmit={event => void saveExpense(event)}><div className="expense-form-grid"><label>{t('date')}<input type="date" value={expenseDate} onChange={e => setExpenseDate(e.target.value)} required /></label><label>{t('category')}<input value={category} onChange={e => setCategory(e.target.value)} minLength={2} maxLength={80} required /></label><label className="expense-wide">{t('description')}<input value={expenseDescription} onChange={e => setExpenseDescription(e.target.value)} minLength={3} maxLength={300} required /></label><label>{t('quantity')}<input inputMode="decimal" value={quantity} onChange={e => setQuantity(e.target.value)} required /></label><label>{t('unitAmount')}<input inputMode="decimal" value={unitAmount} onChange={e => setUnitAmount(e.target.value)} required /></label><label className="expense-wide">{t('proof')}<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" capture="environment" onChange={e => setProofFile(e.target.files?.[0] ?? null)} required /><small>{t('proofLimit')}</small></label></div><div className="expense-live-total">{t('lineTotal')} <b>{formatMoney(calculateLineTotal(quantity || '0', unitAmount || '0'), task.currency, 'en-GB')}</b></div><div className="expense-form-actions"><button type="button" className="secondary-button" onClick={() => setExpenseOpen(false)}>{t('cancel')}</button><button className="primary-button" disabled={busy}>{busy ? t('saving') : t('save')}</button></div></form>}
     <div className="task-operation-summary">
@@ -961,8 +968,8 @@ function TaskDetail({ profile }: { profile: Profile | null }) {
       {profile?.role==='end_user'&&isOwner&&['pending','in_progress','on_hold','skipped','returned','submitted'].includes(task.status)&&<div className="photo-upload-controls"><label>{t('addCompletionPhotos')}<input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple onChange={event=>setCompletionFiles(Array.from(event.target.files??[]))}/></label>{completionFiles.length>0&&<small>{t('photosSelected',{count:completionFiles.length})}</small>}<button type="button" className="secondary-button" disabled={busy||!completionFiles.length} onClick={()=>void uploadPhotos('completion',completionFiles)}>{t('uploadPhotos')}</button></div>}
     </section>
     {profile?.id && (profile.role==='end_user' || services.length>0) && <section className="panel service-progress"><h3>{t('servicesAndHours')}</h3>{services.map(service=>{const progress=serviceProgress[service.id]??{hours:'',completed:false,comment:''};const mismatch=service.assigned_hours!=null&&Number(progress.hours||0)>Number(service.assigned_hours);const workerCanEdit=profile.role==='end_user'&&isOwner&&!currentWorkerSubmitted&&['pending','in_progress','on_hold','skipped','returned'].includes(task.status);return <div className={`service-progress-row ${mismatch?'hours-over':''}`} key={service.id}><div><b>{firstRelated(service.cleaning_areas)?.name||''}{firstRelated(service.cleaning_subtasks)?.name?` · ${firstRelated(service.cleaning_subtasks)?.name}`:''}</b><small>{t('assignedHours')}: {service.assigned_hours??'—'}</small></div>{workerCanEdit?<><input aria-label={t('actualHours')} type="number" min="0" step="0.25" value={progress.hours} onChange={event=>setServiceProgress(current=>({...current,[service.id]:{...progress,hours:event.target.value}}))}/><label className="service-complete"><input type="checkbox" checked={progress.completed} onChange={event=>setServiceProgress(current=>({...current,[service.id]:{...progress,completed:event.target.checked}}))}/>{t('completed')}</label><input className="service-worker-comment" aria-label={t('workerComment')} value={progress.comment} onChange={event=>setServiceProgress(current=>({...current,[service.id]:{...progress,comment:event.target.value}}))} placeholder={t('workerComment')}/><button type="button" className="subtle-button" disabled={busy} onClick={()=>void saveServiceProgress(service.id)}>{t('save')}</button></>:<div className="service-log-readonly">{serviceLogs.filter(log=>log.selection_id===service.id).map(log=><small key={log.profile_id}>{firstRelated(log.profiles)?.full_name||t('worker')}: {log.actual_hours??'—'}h · {log.is_completed?t('completed'):t('incomplete')}</small>)}</div>}{mismatch&&<span className="hours-warning">!</span>}</div>;})}</section>}
-    <div className="budget-summary"><div><span>{t('budget')}</span><b>{budget === null ? t('noLimit') : formatMoney(budget, task.currency, 'en-GB')}</b></div><div><span>{t('spent')}</span><b>{formatMoney(total, task.currency, 'en-GB')}</b></div><div><span>{t('remaining')}</span><b className={overBudget ? 'over-budget-text' : ''}>{balance.remaining === null ? '—' : formatMoney(balance.remaining, task.currency, 'en-GB')}</b></div></div>{overBudget && <div className="over-budget-alert"><CircleDollarSign size={17} /><span><b>{t('limitExceeded')}</b> · {t('overage')}: {formatMoney(balance.overage, task.currency, 'en-GB')}</span></div>}{notice && <div className="form-error proof-error" role="alert">{notice}</div>}<div className="expense-table-wrap"><table className="expense-table"><thead><tr><th>{t('date')}</th><th>{t('category')}</th><th>{t('description')}</th><th>{t('quantity')}</th><th>{t('lineTotal')}</th><th>{t('proof')}</th></tr></thead><tbody>{expenseQuery.data?.map(line => <tr key={line.id}><td>{line.expense_date}</td><td>{line.category}</td><td>{line.description}</td><td>{line.quantity}</td><td>{formatMoney(String(line.line_total), task.currency, 'en-GB')}</td><td>{proofQuery.data?.filter(proof => proof.expense_line_id === line.id).map(proof => <ProofLink key={proof.id} path={proof.object_path} name={proof.original_name} />)}</td></tr>)}</tbody></table>{!expenseQuery.data?.length && <div className="empty-expenses">{t('noTasksHint')}</div>}</div><div className="task-detail-meta"><div><span>{t('priority')}</span><PriorityPill priority={task.priority} /></div><div><span>{t('dueDate')}</span><b>{new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium' }).format(new Date(`${task.due_date}T12:00:00`))}</b></div></div><div className="history-block"><h3>{t('statusHistory')}</h3>{historyQuery.data?.map(item => <div className="history-entry" key={item.id}><StatusPill status={item.to_status}/><span>{new Intl.DateTimeFormat('en-GB',{dateStyle:'medium',timeStyle:'short'}).format(new Date(item.created_at))}</span>{item.comment && <p>{item.comment}</p>}</div>)}</div></div><aside className="panel detail-actions">{task.is_draft&&profile?.role!=='end_user'?<><h2>{t('finalizeDraft')}</h2><p>{t('finalizeDraftHint')}</p><div className="draft-worker-picker">{(workersQuery.data??[]).map(worker=><label key={worker.id}><input type="checkbox" checked={selectedAssignees.includes(worker.id)} onChange={()=>setSelectedAssignees(current=>current.includes(worker.id)?current.filter(id=>id!==worker.id):[...current,worker.id])}/><span>{worker.full_name}</span><small>{worker.employee_id||`@${worker.username}`}</small></label>)}</div><button className="primary-button full-button" disabled={busy||!selectedAssignees.length} onClick={()=>void finalizeDraft()}>{busy?t('saving'):t('finalizeAndAssign')} <ArrowRight size={15}/></button></>:<><h2>{t('nextSteps')}</h2><p>{t('nextStepsSubtitle')}</p>{profile?.role==='end_user'&&currentWorkerSubmitted&&task.status!=='submitted'&&<div className="verified-note">{t('yourWorkSubmitted')}</div>}{isOwner && !currentWorkerSubmitted && ['pending','returned'].includes(task.status) && <button className="primary-button full-button" disabled={busy} onClick={() => void transition('in_progress')}>{t('inProgress')}</button>}{isOwner && !currentWorkerSubmitted && ['pending','in_progress','on_hold','skipped','returned'].includes(task.status) &&
-      <><textarea className="reason-input" value={reason} onChange={e => setReason(e.target.value)} placeholder={t('workerComment')} /><button className="secondary-button full-button" disabled={busy} onClick={() => void transition('on_hold')}>{t('onHold')}</button><button className="secondary-button full-button" disabled={busy} onClick={() => void transition('skipped')}>{t('skipped')}</button><button className="primary-button full-button" disabled={busy} onClick={() => void transition('submitted')}>{assignments.length>1?t('submitMyWork'):t('submitForReview')} <ArrowRight size={15} /></button></>
+    <div className="budget-summary"><div><span>{t('budget')}</span><b>{budget === null ? t('noLimit') : formatMoney(budget, task.currency, 'en-GB')}</b></div><div><span>{t('spent')}</span><b>{formatMoney(total, task.currency, 'en-GB')}</b></div><div><span>{t('remaining')}</span><b className={overBudget ? 'over-budget-text' : ''}>{balance.remaining === null ? '—' : formatMoney(balance.remaining, task.currency, 'en-GB')}</b></div></div>{overBudget && <div className="over-budget-alert"><CircleDollarSign size={17} /><span><b>{t('limitExceeded')}</b> · {t('overage')}: {formatMoney(balance.overage, task.currency, 'en-GB')}</span></div>}{notice && <div className="form-error proof-error" role="alert">{notice}</div>}<div className="expense-table-wrap"><table className="expense-table"><thead><tr><th>{t('date')}</th><th>{t('category')}</th><th>{t('description')}</th><th>{t('quantity')}</th><th>{t('lineTotal')}</th><th>{t('proof')}</th></tr></thead><tbody>{expenseQuery.data?.map(line => <tr key={line.id}><td>{line.expense_date}</td><td>{line.category}</td><td>{line.description}</td><td>{line.quantity}</td><td>{formatMoney(String(line.line_total), task.currency, 'en-GB')}</td><td>{proofQuery.data?.filter(proof => proof.expense_line_id === line.id).map(proof => <ProofLink key={proof.id} path={proof.object_path} name={proof.original_name} />)}</td></tr>)}</tbody></table>{!expenseQuery.data?.length && <div className="empty-expenses">{t('noTasksHint')}</div>}</div><div className="task-detail-meta"><div><span>{t('priority')}</span><PriorityPill priority={task.priority} /></div><div><span>{t('dueDate')}</span><b>{new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium' }).format(new Date(`${task.due_date}T12:00:00`))}</b></div></div><div className="history-block"><h3>{t('statusHistory')}</h3>{historyQuery.data?.map(item => <div className="history-entry" key={item.id}><StatusPill status={item.to_status}/><span>{new Intl.DateTimeFormat('en-GB',{dateStyle:'medium',timeStyle:'short'}).format(new Date(item.created_at))}</span>{item.comment && <p>{item.comment}</p>}</div>)}</div></div><aside className="panel detail-actions">{task.is_draft&&profile?.role!=='end_user'?<><h2>{t('finalizeDraft')}</h2><p>{t('finalizeDraftHint')}</p><div className="draft-worker-picker">{(workersQuery.data??[]).map(worker=><label key={worker.id}><input type="checkbox" checked={selectedAssignees.includes(worker.id)} onChange={()=>setSelectedAssignees(current=>current.includes(worker.id)?current.filter(id=>id!==worker.id):[...current,worker.id])}/><span>{worker.full_name}</span><small>{worker.employee_id||`@${worker.username}`}</small></label>)}</div><button className="primary-button full-button" disabled={busy||!selectedAssignees.length} onClick={()=>void finalizeDraft()}>{busy?t('saving'):t('finalizeAndAssign')} <ArrowRight size={15}/></button></>:<><h2>{t('nextSteps')}</h2><p>{t('nextStepsSubtitle')}</p>{profile?.role==='end_user'&&currentWorkerSubmitted&&task.status!=='submitted'&&<div className="verified-note">{t('yourWorkSubmitted')}</div>}{isOwner && !currentWorkerSubmitted && ['pending','returned'].includes(task.status) && <button className="primary-button full-button" disabled={busy} onClick={() => void transition('in_progress')}>{t('inProgress')}</button>}{profile?.role==='end_user'&&canChangeWorkStatus&&
+      <><label>{t('changeStatus')}<select value={nextWorkStatus} onChange={event=>setNextWorkStatus(event.target.value)}>{workStatuses.map(status=><option key={status} value={status}>{t(({in_progress:'inProgress',on_hold:'onHold'} as Record<string,string>)[status]??status)}</option>)}</select></label><textarea className="reason-input" value={reason} onChange={e => setReason(e.target.value)} placeholder={nextWorkStatus==='on_hold'?t('holdComment'):nextWorkStatus==='skipped'?t('skipComment'):nextWorkStatus==='returned'?t('returnComment'):t('workerComment')} /><button className="secondary-button full-button" disabled={busy||nextWorkStatus===task.status} onClick={() => void transition(nextWorkStatus)}>{busy?t('saving'):t('updateStatus')}</button><button className="primary-button full-button" disabled={busy} onClick={() => void transition('submitted')}>{assignments.length>1?t('submitMyWork'):t('submitForReview')} <ArrowRight size={15} /></button></>
     }{!isOwner && task.status === 'submitted' && <><textarea className="reason-input" value={reason} onChange={e => setReason(e.target.value)} placeholder={t('returnComment')} /><button className="primary-button full-button" disabled={busy} onClick={() => void transition('verified')}>{t('verify')} <Check size={15} /></button><button className="secondary-button full-button" disabled={busy} onClick={() => void transition('returned')}>{t('returnForCorrection')}</button></>}{task.status === 'verified' && <div className="verified-note"><ShieldCheck size={18} />{t('verified')} · {t('recordLocked')}</div>}</>}</aside></div></>;
 }
 
@@ -985,12 +992,120 @@ function TaskPhotoImage({ path, name }: { path: string; name: string }) {
 }
 
 function ExceptionalTaskActions({ profile, taskId }: { profile: Profile | null; taskId: string }) {
-  const { t } = useTranslation(); const qc = useQueryClient(); const [reason,setReason]=useState(''); const [error,setError]=useState(''); const [busy,setBusy]=useState(false);
-  const {data:task}=useQuery({queryKey:['task-exception',taskId],enabled:Boolean(supabase&&profile&&(profile.role==='super_admin'||profile.role==='assigner')),queryFn:async()=>{const {data,error:queryError}=await supabase!.from('tasks').select('id,status,version').eq('id',taskId).maybeSingle();if(queryError)throw queryError;return data;}});
-  if(!task||profile?.role==='end_user'||!(task.status==='pending'||(task.status==='verified'&&profile?.role==='super_admin')))return null;
-  const nextStatus=task.status==='verified'?'returned':'cancelled';
-  const submit=async()=>{if(reason.trim().length<1){setError(t(task.status==='verified'?'reopenComment':'cancelComment'));return;}if(!supabase)return;setBusy(true);setError('');const {error:rpcError}=await supabase.rpc('transition_task',{target_task:task.id,next_status:nextStatus,reason:reason.trim(),expected_version:task.version});if(rpcError)setError(t('connectionError'));else{setReason('');await Promise.all([qc.invalidateQueries({queryKey:['task',taskId]}),qc.invalidateQueries({queryKey:['task-exception',taskId]}),qc.invalidateQueries({queryKey:['tasks']})]);}setBusy(false);};
-  return <section className="panel exception-panel"><h2>{task.status==='verified'?t('reopen'):t('cancelTask')}</h2><p>{task.status==='verified'?t('reopenComment'):t('cancelComment')}</p><label className="sr-only" htmlFor="exception-reason">{task.status==='verified'?t('reopenComment'):t('cancelComment')}</label><textarea id="exception-reason" className="reason-input" value={reason} onChange={event=>setReason(event.target.value)} minLength={1}/>{error&&<span role="alert" className="field-error">{error}</span>}<button className="secondary-button full-button" disabled={busy} onClick={()=>void submit()}>{busy?t('saving'):task.status==='verified'?t('reopen'):t('cancelTask')}</button></section>;
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const [reason, setReason] = useState('');
+  const [exceptionReason, setExceptionReason] = useState('');
+  const [nextWorkStatus, setNextWorkStatus] = useState('');
+  const [error, setError] = useState('');
+  const [exceptionError, setExceptionError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const { data: task, error: taskError } = useQuery({
+    queryKey: ['task-exception', taskId],
+    enabled: Boolean(supabase && profile && (profile.role === 'super_admin' || profile.role === 'assigner')),
+    queryFn: async () => {
+      const { data, error: queryError } = await supabase!.from('tasks')
+        .select('id,status,version,assigner_id,assignee_id,is_draft')
+        .eq('id', taskId)
+        .maybeSingle();
+      if (queryError) throw queryError;
+      return data;
+    },
+  });
+  const profileId = profile?.id ?? '';
+  const accessQuery = useQuery({
+    queryKey: ['task-status-access', taskId, profileId, task?.assignee_id],
+    enabled: Boolean(supabase && profile?.role === 'assigner' && task),
+    queryFn: async () => {
+      if (!profile || profile.role !== 'assigner' || !task) return false;
+      if (task.assigner_id === profile.id) return true;
+      const { data, error: permissionError } = await supabase!.from('permissions')
+        .select('id')
+        .eq('assigner_id', profile.id)
+        .eq('end_user_id', task.assignee_id)
+        .maybeSingle();
+      if (permissionError) throw permissionError;
+      return Boolean(data);
+    },
+  });
+  useEffect(() => {
+    if (task) setNextWorkStatus(task.status);
+  }, [task]);
+
+  const canManage = profile?.role === 'super_admin'
+    || (profile?.role === 'assigner' && (task?.assigner_id === profile.id || accessQuery.data === true));
+  if (taskError || accessQuery.error) return <section className="panel exception-panel" role="alert">{t('connectionError')}</section>;
+  if (!task || !canManage) return null;
+
+  const workStatuses = ['pending', 'in_progress', 'on_hold', 'skipped', 'returned'];
+  const canChangeWorkStatus = !task.is_draft && workStatuses.includes(task.status);
+  const isReopening = task.status === 'verified';
+  const isCancelling = task.status === 'pending';
+  const submit = async (nextStatus: string) => {
+    if (!supabase) return;
+    const minReasonLength = nextStatus === 'cancelled' ? 1
+      : ['on_hold', 'skipped', 'returned'].includes(nextStatus) ? 10 : 0;
+    const isExceptionAction = nextStatus === 'cancelled' || task.status === 'verified';
+    const actionReason = isExceptionAction ? exceptionReason : reason;
+    if (actionReason.trim().length < minReasonLength) {
+      (isExceptionAction ? setExceptionError : setError)(t(nextStatus === 'cancelled' ? 'cancelComment'
+        : nextStatus === 'returned' ? 'reopenComment'
+          : nextStatus === 'on_hold' ? 'holdComment' : 'skipComment'));
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setExceptionError('');
+    const { error: rpcError } = await supabase.rpc('transition_task', {
+      target_task: task.id,
+      next_status: nextStatus,
+      reason: actionReason.trim() || null,
+      expected_version: task.version,
+    });
+    if (rpcError) {
+      (isExceptionAction ? setExceptionError : setError)(rpcError.code === '40001' ? t('taskConflict') : rpcError.message || t('transitionFailed'));
+    } else {
+      setReason('');
+      setExceptionReason('');
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['task', taskId] }),
+        qc.invalidateQueries({ queryKey: ['task-exception', taskId] }),
+        qc.invalidateQueries({ queryKey: ['task-assignments', taskId] }),
+        qc.invalidateQueries({ queryKey: ['task-history', taskId] }),
+        qc.invalidateQueries({ queryKey: ['tasks'] }),
+      ]);
+    }
+    setBusy(false);
+  };
+
+  return <>
+    {canChangeWorkStatus && <section className="panel exception-panel">
+      <h2>{t('manageTaskStatus')}</h2>
+      <p>{t('statusChangeHint')}</p>
+      <label>{t('changeStatus')}
+        <select value={nextWorkStatus} onChange={event => setNextWorkStatus(event.target.value)}>
+          {workStatuses.map(status => <option key={status} value={status}>{t(status === 'in_progress' ? 'inProgress' : status === 'on_hold' ? 'onHold' : status)}</option>)}
+        </select>
+      </label>
+      {['on_hold', 'skipped', 'returned'].includes(nextWorkStatus) && <textarea className="reason-input" value={reason} onChange={event => setReason(event.target.value)} placeholder={t(nextWorkStatus === 'on_hold' ? 'holdComment' : nextWorkStatus === 'skipped' ? 'skipComment' : 'returnComment')} />}
+      {error && <span role="alert" className="field-error">{error}</span>}
+      <button className="primary-button full-button" disabled={busy || nextWorkStatus === task.status} onClick={() => void submit(nextWorkStatus)}>{busy ? t('saving') : t('updateStatus')}</button>
+    </section>}
+    {isCancelling && <section className="panel exception-panel">
+      <h2>{t('cancelTask')}</h2><p>{t('cancelComment')}</p>
+      <label className="sr-only" htmlFor="exception-reason">{t('cancelComment')}</label>
+      <textarea id="exception-reason" className="reason-input" value={exceptionReason} onChange={event => setExceptionReason(event.target.value)} minLength={1}/>
+      {exceptionError && <span role="alert" className="field-error">{exceptionError}</span>}
+      <button className="secondary-button full-button" disabled={busy} onClick={() => void submit('cancelled')}>{busy ? t('saving') : t('cancelTask')}</button>
+    </section>}
+    {isReopening && <section className="panel exception-panel">
+      <h2>{t('reopen')}</h2><p>{t('reopenComment')}</p>
+      <label className="sr-only" htmlFor="exception-reason">{t('reopenComment')}</label>
+      <textarea id="exception-reason" className="reason-input" value={exceptionReason} onChange={event => setExceptionReason(event.target.value)} minLength={10}/>
+      {exceptionError && <span role="alert" className="field-error">{exceptionError}</span>}
+      <button className="secondary-button full-button" disabled={busy} onClick={() => void submit('returned')}>{busy ? t('saving') : t('reopen')}</button>
+    </section>}
+  </>;
 }
 
 function TaskPage({ profile }: { profile: Profile | null }) {
