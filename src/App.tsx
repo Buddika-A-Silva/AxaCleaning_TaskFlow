@@ -754,7 +754,7 @@ function TaskDetail({ profile }: { profile: Profile | null }) {
     if (next === 'submitted') {
       const logs=serviceLogsQuery.data??[];
       const services=servicesQuery.data??[];
-      if (!hasHoursForEveryService(services.map(service=>service.id),logs)) { setNotice(t('serviceHoursRequired')); return; }
+      if (!hasHoursForEveryService(services.map(service=>service.id),logs)) { setNotice(t('serviceProgressHoursRequired')); return; }
       const assignments=assignmentsQuery.data??[];
       const completedServices=new Set(logs.filter(log=>log.actual_hours!=null&&log.is_completed).map(log=>log.selection_id));
       const exceedsTaskHours=assignments.some(assignment=>{

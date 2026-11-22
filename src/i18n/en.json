@@ -229,7 +229,7 @@
   "reportsSubtitle": "Review task and expense activity you are authorised to access.",
   "settingsSubtitle": "Manage your profile and workspace preferences.",
   "hoursMismatchComment": "Explain in the comment why worked hours exceeded the assigned hours.",
-  "serviceHoursRequired": "Enter worked hours for each selected service before submitting.",
+  "serviceProgressHoursRequired": "Enter worked hours for each selected service before submitting.",
   "taskTeam": "Task team",
   "customer": "Customer",
   "servicesAndHours": "Services and hours",
