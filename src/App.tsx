@@ -14,6 +14,7 @@ import { toCsv } from './lib/csv';
 import { formatDateKey, formatMonthKey, getMonthCalendarDays, parseMonthKey, taskOccursOnCalendarDay } from './lib/calendar';
 import { isDuplicateTaskReferenceError } from './lib/task-errors';
 import { hasCompletionPhoto } from './lib/task-completion';
+import { hasHoursForEveryService } from './lib/task-service-progress';
 import axaLogo from './LOGO.jpeg';
 
 function Brand({ light = false, compact = false }: { light?: boolean; compact?: boolean }) {
@@ -751,13 +752,20 @@ function TaskDetail({ profile }: { profile: Profile | null }) {
     if (!supabase || !task) return;
     if (['on_hold','skipped','returned','cancelled'].includes(next) && reason.trim().length < (next === 'cancelled' ? 1 : 10)) { setNotice(next === 'returned' ? t('returnComment') : next === 'cancelled' ? t('cancelComment') : t(next === 'on_hold' ? 'holdComment' : 'skipComment')); return; }
     if (next === 'submitted') {
-      const currentLogs=(serviceLogsQuery.data??[]).filter(log=>log.profile_id===profile?.id);
-      const currentAssignment=assignmentsQuery.data?.find(assignment=>assignment.profile_id===profile?.id);
-      const currentTotal=currentLogs.reduce((sum,log)=>sum+Number(log.actual_hours??0),0);
-      const exceedsTaskHours=currentAssignment?.assigned_hours!=null&&currentTotal>Number(currentAssignment.assigned_hours);
-      const mismatched = exceedsTaskHours || (servicesQuery.data ?? []).some(service => {
-        const log=currentLogs.find(item=>item.selection_id===service.id);
-        return !log||!log.is_completed||log.actual_hours==null||(service.assigned_hours!=null&&Number(log.actual_hours)>Number(service.assigned_hours));
+      const logs=serviceLogsQuery.data??[];
+      const services=servicesQuery.data??[];
+      if (!hasHoursForEveryService(services.map(service=>service.id),logs)) { setNotice(t('serviceHoursRequired')); return; }
+      const assignments=assignmentsQuery.data??[];
+      const completedServices=new Set(logs.filter(log=>log.actual_hours!=null&&log.is_completed).map(log=>log.selection_id));
+      const exceedsTaskHours=assignments.some(assignment=>{
+        const total=logs.filter(log=>log.profile_id===assignment.profile_id).reduce((sum,log)=>sum+Number(log.actual_hours??0),0);
+        return assignment.assigned_hours!=null&&total>Number(assignment.assigned_hours);
+      });
+      const mismatched = exceedsTaskHours || logs.some(log=>{
+        if(log.actual_hours==null)return false;
+        const service=services.find(item=>item.id===log.selection_id);
+        return (!log.is_completed&&!completedServices.has(log.selection_id))
+          || (service?.assigned_hours!=null&&Number(log.actual_hours)>Number(service.assigned_hours));
       });
       if (mismatched && reason.trim().length < 3) { setNotice(t('hoursMismatchComment')); return; }
       if (!hasCompletionPhoto(photosQuery.data??[])&&!completionFiles.length) { setNotice(t('completionPhotoRequired')); return; }
