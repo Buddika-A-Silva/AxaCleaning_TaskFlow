@@ -6,3 +6,144 @@
 .brand-credit{padding-top:24px;color:#929bad;text-align:center;font-size:10px}
 .temporary-credentials{max-width:760px;margin:0 0 14px;padding:18px;border:1px solid #d8e1fb;background:#f8faff}.temporary-credentials h2{margin:0 0 5px;font:700 14px Manrope,sans-serif;color:#273553}.temporary-credentials p{margin:0;color:#6f7c92;font-size:10px;line-height:1.5}.temporary-credentials dl{display:grid;grid-template-columns:1fr 2fr;gap:10px;margin:16px 0}.temporary-credentials dl div{min-width:0}.temporary-credentials dt{color:#79859a;font-size:9px}.temporary-credentials dd{margin:4px 0 0;color:#25324a;font-size:11px;font-weight:700;overflow-wrap:anywhere}.temporary-credentials code{font-size:12px;user-select:all}.temporary-credentials .form-actions{justify-content:flex-start;margin-top:8px}.people-row-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.people-row-actions .subtle-button{white-space:nowrap}
 @media(max-width:640px){.temporary-credentials dl{grid-template-columns:1fr}.people-row-actions{align-items:flex-start;flex-direction:column}}
+
+.task-table th{font-size:11px;letter-spacing:.04em}
+.task-table td{font-size:13px;padding:12px}
+.task-title-cell .task-code,.task-code{font-size:10px}
+.task-title-cell b{font-size:14px;line-height:1.4}
+.task-table .status-pill,.task-table .priority-text{font-size:11px}
+.task-card{padding:18px}
+.task-card h3{font-size:17px;line-height:1.35;white-space:normal}
+.task-card p{font-size:14px;line-height:1.55;min-height:44px}
+.task-card .task-code{font-size:11px}
+.task-card .status-pill,.task-card .priority-text,.task-card-due,.task-card-budget{font-size:12px}
+.task-card-bottom{gap:14px}
+.filter-toolbar select{min-height:42px;font-size:13px}
+.filter-toolbar .month-filter,.filter-toolbar .date-filter,.filter-toolbar .budget-filter{font-size:12px}
+.filter-toolbar .month-filter input,.filter-toolbar .date-filter input{min-height:42px;font-size:13px}
+.filter-toolbar .list-search input{font-size:14px}
+.filter-toolbar .subtle-button{min-height:42px;font-size:13px}
+
+.detail-back a{font-size:14px}
+.detail-heading{align-items:flex-start;margin-bottom:26px}
+.detail-heading h1{font-size:clamp(28px,2.4vw,36px);letter-spacing:-.7px;line-height:1.2}
+.detail-heading p{max-width:80ch;font-size:15px;line-height:1.55}
+.detail-grid{grid-template-columns:minmax(0,1fr) 300px;gap:20px}
+.detail-main .panel-heading{min-height:84px;padding:20px 24px}
+.detail-main .panel-heading h2{font-size:20px}
+.detail-main .panel-heading>div>span{font-size:13px;line-height:1.5}
+.detail-main .panel-heading .subtle-button{min-height:42px;font-size:13px}
+.detail-actions{padding:22px}
+.detail-actions h2{font-size:19px}
+.detail-actions>p{font-size:14px;line-height:1.55}
+.detail-actions .reason-input{min-height:92px;font-size:14px}
+.detail-actions .full-button{width:100%;min-height:44px;margin:9px 0 0;font-size:14px}
+.detail-actions .verified-note{font-size:13px;line-height:1.5}
+
+.task-operation-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:18px 24px}
+.task-operation-summary section{padding:18px}
+.task-operation-summary section:nth-child(3){grid-column:1/-1}
+.task-operation-summary h3,.service-progress h3{font-size:16px;margin-bottom:12px}
+.task-operation-summary p{font-size:14px;line-height:1.6;margin:8px 0;color:#58657a}
+.task-operation-summary p b{color:#344157}
+.task-operation-summary p small{display:block;margin-top:5px;font-size:12px;line-height:1.5;color:#657188}
+.task-operation-summary .worker-submission-state{display:inline-flex;width:fit-content;align-items:center;margin-top:8px;padding:4px 9px;border-radius:999px;background:#eef0ff;color:#4c5bc7;font-size:12px;font-weight:700}
+.task-operation-summary .worker-submission-state.is-submitted{background:#e8f7ef;color:#207852}
+.task-operation-summary .worker-submission-state.is-pending{background:#fff4df;color:#8f651d}
+.equipment-return-row{gap:12px;padding:10px 0}
+.equipment-return-row>b{font-size:13px}
+.equipment-return-row>span,.equipment-return-row label{font-size:13px}
+.equipment-return-row input{width:68px;height:38px;font-size:14px}
+.equipment-return-row .subtle-button{min-height:40px;font-size:13px}
+
+.task-photo-panel{margin:0 24px 20px}
+.task-photo-panel .panel-heading h2{font-size:19px}
+.task-photo-panel .panel-heading>div>span{font-size:13px}
+.task-photo-groups{gap:20px;padding:18px 22px}
+.task-photo-groups h3{font-size:14px}
+.task-photo-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px}
+.task-photo img,.task-photo>span{height:132px;min-height:132px}
+.task-photo>span,.task-photo small,.empty-photo-state{font-size:12px;line-height:1.5}
+.photo-upload-controls{gap:12px;margin:0 22px;padding-top:16px}
+.photo-upload-controls input[type=file],.photo-upload-controls label{font-size:13px}
+.photo-upload-controls small{font-size:12px}
+.photo-upload-controls .secondary-button{min-height:42px;font-size:13px}
+
+.service-progress{margin:0 24px 20px;padding:18px}
+.service-progress-row{grid-template-columns:minmax(200px,1fr) 110px minmax(135px,auto) 30px;gap:12px;min-height:64px}
+.service-progress-row>div b{font-size:14px;line-height:1.4}
+.service-progress-row>div small,.service-log-readonly small{font-size:12px;line-height:1.5}
+.service-progress-row input[type=number]{width:100px;height:42px;font-size:14px}
+.service-complete{gap:8px;font-size:13px}
+.service-complete input{width:18px;height:18px}
+.service-worker-comment{min-height:42px;padding:8px 10px;font-size:13px}
+.service-progress-row .subtle-button{min-height:40px;font-size:13px}
+
+.budget-summary{margin:0 24px;padding:18px 0}
+.budget-summary span,.task-detail-meta>div>span{font-size:12px}
+.budget-summary b{font-size:17px}
+.over-budget-alert{margin:14px 24px 0;padding:12px 14px;font-size:13px;line-height:1.5}
+.expense-table-wrap{margin:16px 24px}
+.expense-table th{font-size:11px;padding:12px}
+.expense-table td{font-size:13px;padding:14px 12px}
+.empty-expenses{font-size:13px;line-height:1.5}
+.task-detail-meta{margin:0 24px 20px;gap:56px}
+.task-detail-meta b{font-size:14px}
+.history-block{padding:0 24px 24px}
+.history-block h3{font-size:17px}
+.history-entry>span:nth-child(2){font-size:12px}
+.history-entry p{font-size:13px;line-height:1.55}
+
+.task-wizard .wizard-tabs button{min-height:44px;font-size:14px}
+.task-wizard .wizard-panel{padding:24px}
+.assignment-section h2,.equipment-section h2,.service-area h2{font-size:17px}
+.assignment-section>p,.equipment-section>p,.service-estimate-hint{font-size:14px;line-height:1.55}
+.employee-option{min-height:74px;padding:13px}
+.employee-option b{font-size:14px}
+.employee-option small{font-size:12px}
+.service-area{padding:18px}
+.service-check{min-height:46px;font-size:14px}
+.service-hours{height:38px;font-size:13px}
+.equipment-option{min-height:50px;padding:10px;font-size:13px}
+.equipment-option input[type=number]{height:36px;font-size:13px}
+.wizard-actions .primary-button,.wizard-actions .secondary-button{min-height:44px;font-size:13px}
+
+.calendar-task-reference{font-size:9px}
+.calendar-task-title{font-size:10px;line-height:1.4}
+.calendar-task-detail,.calendar-task-hours{font-size:9px;line-height:1.4}
+.calendar-task-badges .status-pill,.calendar-task-badges .priority-text{font-size:8px}
+
+@media(max-width:1050px){
+  .detail-grid{grid-template-columns:1fr}
+  .detail-actions{order:-1}
+}
+@media(max-width:760px){
+  .detail-heading{gap:12px}
+  .detail-heading h1{font-size:28px}
+  .detail-heading p{font-size:14px}
+  .detail-main .panel-heading{padding:17px}
+  .task-operation-summary{grid-template-columns:1fr;margin:14px}
+  .task-operation-summary section:nth-child(3){grid-column:auto}
+  .task-photo-panel,.service-progress{margin-left:14px;margin-right:14px}
+  .task-photo-groups{padding:14px}
+  .photo-upload-controls{margin:0 14px}
+  .budget-summary,.task-detail-meta{margin-left:14px;margin-right:14px}
+  .over-budget-alert{margin-left:14px;margin-right:14px}
+  .expense-table-wrap{margin:14px}
+  .history-block{padding-left:14px;padding-right:14px}
+  .service-progress-row{grid-template-columns:minmax(0,1fr) 90px}
+  .service-progress-row input[type=number]{width:90px}
+  .service-complete{grid-column:1/-1}
+  .service-worker-comment{grid-column:1/-1}
+  .service-progress-row .subtle-button{grid-column:1/-1;justify-self:start}
+  .task-wizard .wizard-panel{padding:16px}
+  .calendar-task-title{font-size:9px}
+  .calendar-task-detail,.calendar-task-hours{font-size:8px}
+}
+@media(max-width:420px){
+  .task-card-bottom{flex-wrap:wrap}
+  .task-card-bottom .priority-text{margin-left:0}
+  .detail-actions{padding:16px}
+  .detail-actions .full-button{width:100%;margin-right:0}
+  .expense-form-grid{grid-template-columns:1fr}
+}
