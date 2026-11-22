@@ -147,3 +147,29 @@
   .detail-actions .full-button{width:100%;margin-right:0}
   .expense-form-grid{grid-template-columns:1fr}
 }
+
+.topbar{position:sticky}
+.notification-button i{width:auto;height:auto;min-width:16px;padding:0 4px;display:grid;place-items:center;border:1.5px solid #fff;background:#e7796e;border-radius:999px;color:#fff;font-size:9px;font-style:normal;font-weight:800;line-height:14px}
+.notification-popover{position:absolute;z-index:45;top:58px;right:24px;width:min(390px,calc(100vw - 28px));max-height:min(70vh,560px);overflow:hidden;background:#fff;border:1px solid #e8ebf2;border-radius:12px;box-shadow:0 14px 40px #19274724}
+.notification-popover-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid #eef0f4}
+.notification-popover-heading b{font-size:14px;color:#29364d}
+.notification-popover-heading span{font-size:11px;color:#7d899d}
+.notification-list{max-height:min(60vh,480px);overflow:auto}
+.notification-item{display:flex;align-items:flex-start;gap:11px;padding:13px 17px;border-bottom:1px solid #f0f2f6;color:#354157;text-decoration:none;cursor:pointer}
+.notification-item:hover{background:#f8f9fd}
+.notification-item.is-read{background:#fff}
+.notification-item-dot{flex:0 0 8px;width:8px;height:8px;margin-top:5px;border-radius:50%;background:#6977dc}
+.notification-item-dot.read{background:#d2d7e1}
+.notification-item-content{min-width:0;display:grid;gap:4px}
+.notification-item-content b{font-size:12px;color:#354157}
+.notification-item-content small{font-size:12px;line-height:1.45;color:#67748a}
+.notification-item-content time{font-size:10px;color:#929bad}
+.notification-empty,.notification-error{margin:0;padding:20px;font-size:12px;line-height:1.5;color:#758197}
+.notification-error{color:#b84b55}
+.detail-heading .task-heading-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.task-heading-actions .subtle-button{min-height:40px;font-size:13px}
+@media(max-width:680px){
+  .notification-popover{top:51px;right:8px}
+  .detail-heading .task-heading-actions{align-items:flex-end;flex-direction:column;gap:7px}
+  .task-heading-actions .subtle-button{min-height:36px;font-size:12px}
+}

@@ -38,6 +38,7 @@ type TaskEquipmentItem = { equipment_id: string; quantity: number; returned_quan
 type WorkerOption = { id: string; full_name: string; username: string; employee_id: string | null };
 type ReportAssignment = { task_id: string; profile_id: string; assigned_hours: number | null; profiles: Related<EmployeeSummary> };
 type ReportServiceLog = { task_id: string; profile_id: string; actual_hours: number | null };
+type TaskNotification = { id: string; task_id: string | null; title: string; body: string; read_at: string | null; created_at: string };
 
 function firstRelated<T>(value: Related<T> | undefined): T | undefined {
   return Array.isArray(value) ? value[0] : value ?? undefined;
@@ -98,10 +99,92 @@ const navItems = [
 ];
 
 function AppShell({ user, profile, onSignOut, children }: { user: User; profile: Profile | null; onSignOut: () => void; children: ReactNode }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationError, setNotificationError] = useState('');
+  const queryClient = useQueryClient();
+  const { data: notifications = [], isError: notificationsFailed } = useQuery<TaskNotification[]>({
+    queryKey: ['notifications', profile?.id],
+    enabled: Boolean(supabase && profile),
+    queryFn: async () => {
+      const { data, error } = await supabase!.from('notifications')
+        .select('id,task_id,title,body,read_at,created_at')
+        .order('created_at', { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
   const admin = profile?.role !== 'end_user';
   const name = profile?.full_name || user.email?.split('@')[0] || 'there';
+  const { data: unreadCount = 0, isError: unreadCountFailed } = useQuery({
+    queryKey: ['notification-unread-count', profile?.id],
+    enabled: Boolean(supabase && profile),
+    queryFn: async () => {
+      const { count, error } = await supabase!.from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .is('read_at', null);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+  const markNotificationRead = async (notification: TaskNotification): Promise<boolean> => {
+    if (!supabase || !profile) return false;
+    if (notification.read_at) return true;
+    setNotificationError('');
+    const { error } = await supabase.from('notifications')
+      .update({ read_at: new Date().toISOString() })
+      .eq('id', notification.id)
+      .eq('recipient_id', profile.id);
+    if (error) {
+      console.error('Notification read state update failed', error);
+      setNotificationError(t('notificationUpdateFailed'));
+      return false;
+    }
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['notifications', profile.id] }),
+      queryClient.invalidateQueries({ queryKey: ['notification-unread-count', profile.id] }),
+    ]);
+    return true;
+  };
+  const notificationText = (notification: TaskNotification) => {
+    let body: Record<string, unknown> = {};
+    try {
+      const parsed: unknown = JSON.parse(notification.body);
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) body = parsed as Record<string, unknown>;
+    } catch {
+      return notification.body;
+    }
+    if (notification.title === 'task.updated') {
+      if (body.removed_from_team === true) {
+        return t('taskRemovedNotification', { reference: typeof body.reference === 'string' ? body.reference : '' });
+      }
+      const changes = Array.isArray(body.changes) ? body.changes.filter((change): change is string => typeof change === 'string') : [];
+      const labels: Record<string, string> = {
+        reference: 'reference', title: 'title', description: 'description', priority: 'priority',
+        start_date: 'startDate', due_date: 'dueDate', assigned_hours: 'taskEstimateOptional',
+        budget_limit: 'budget', currency: 'currency', customer: 'customerDetails',
+        team: 'taskTeam', services: 'servicesAndHours', equipment: 'equipment',
+      };
+      return t('taskUpdatedNotification', {
+        reference: typeof body.reference === 'string' ? body.reference : '',
+        changes: changes.map(change => t(labels[change] ?? change)).join(', '),
+      });
+    }
+    if (notification.title === 'task.status_changed') {
+      const statusKeys: Record<string, string> = {
+        pending: 'pending', in_progress: 'inProgress', on_hold: 'onHold', skipped: 'skipped',
+        submitted: 'submitted', verified: 'verified', returned: 'returned', cancelled: 'cancelled',
+      };
+      const status = typeof body.status === 'string' ? t(statusKeys[body.status] ?? body.status) : '';
+      return t('taskStatusNotification', {
+        reference: typeof body.reference === 'string' ? body.reference : '',
+        status,
+      });
+    }
+    return notification.body;
+  };
   return <div className="app-shell">
     <aside className={`sidebar ${menuOpen ? 'sidebar-open' : ''}`}>
       <Link className="side-brand" to="/app"><Brand /></Link>
@@ -114,7 +197,9 @@ function AppShell({ user, profile, onSignOut, children }: { user: User; profile:
       </div>
     </aside>
     {menuOpen && <button className="sidebar-overlay" aria-label={t('close')} onClick={() => setMenuOpen(false)} />}
-    <div className="main-column"><header className="topbar"><button className="mobile-menu icon-button" onClick={() => setMenuOpen(true)} aria-label={t('menu')}><Menu size={20} /></button>    <div className="breadcrumb"><span>{t('workspace')}</span><span className="crumb-slash">/</span><b>{t('dashboard')}</b></div><div className="top-actions"><label className="global-search"><Search size={16} /><input placeholder={t('search')} aria-label={t('search')} /><kbd>⌘ K</kbd></label><button className="icon-button notification-button" aria-label={t('notifications')}><Bell size={19} /><i /></button><div className="top-avatar">{name.slice(0, 1).toUpperCase()}</div></div></header>
+    <div className="main-column"><header className="topbar"><button className="mobile-menu icon-button" onClick={() => setMenuOpen(true)} aria-label={t('menu')}><Menu size={20} /></button>    <div className="breadcrumb"><span>{t('workspace')}</span><span className="crumb-slash">/</span><b>{t('dashboard')}</b></div><div className="top-actions"><label className="global-search"><Search size={16} /><input placeholder={t('search')} aria-label={t('search')} /><kbd>⌘ K</kbd></label><button type="button" className="icon-button notification-button" aria-label={t('notifications')} aria-expanded={notificationsOpen} onClick={() => {setNotificationsOpen(open=>!open);setNotificationError('');}}><Bell size={19} />{unreadCount>0&&<i>{unreadCount>9?'9+':unreadCount}</i>}</button><div className="top-avatar">{name.slice(0, 1).toUpperCase()}</div></div>
+      {notificationsOpen&&<section className="notification-popover" aria-label={t('notifications')}><div className="notification-popover-heading"><b>{t('notifications')}</b><span>{unreadCount>0?t('unreadNotifications',{count:unreadCount}):t('allNotificationsRead')}</span></div>{(notificationError||notificationsFailed||unreadCountFailed)&&<p className="notification-error" role="alert">{notificationError||t('notificationsUnavailable')}</p>}{notificationsFailed?<p className="notification-empty">{t('notificationsUnavailable')}</p>:notifications.length===0?<p className="notification-empty">{t('noNotifications')}</p>:<div className="notification-list">{notifications.map(notification=>{const content=<><span className={`notification-item-dot ${notification.read_at?'read':''}`} /><span className="notification-item-content"><b>{t(notification.title==='task.updated'?'taskUpdatedTitle':notification.title==='task.status_changed'?'taskStatusTitle':'notifications')}</b><small>{notificationText(notification)}</small><time>{new Intl.DateTimeFormat(i18n.language,{dateStyle:'medium',timeStyle:'short'}).format(new Date(notification.created_at))}</time></span></>;return notification.task_id?<Link key={notification.id} className={`notification-item ${notification.read_at?'is-read':''}`} to={`/app/tasks/${notification.task_id}`} onClick={()=>{void markNotificationRead(notification).then(marked=>{if(marked)setNotificationsOpen(false);});}}>{content}</Link>:<div key={notification.id} className={`notification-item ${notification.read_at?'is-read':''}`} onClick={()=>void markNotificationRead(notification)} role="button" tabIndex={0} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();void markNotificationRead(notification);}}}>{content}</div>;})}</div>}</section>}
+      </header>
       {admin && <div className="role-banner"><span className="role-dot" /> {profile?.role === 'super_admin' ? t('mainAdminWorkspace') : t('assignerWorkspace')} <span>·</span> {t('teamOverview')}</div>}
       <main className="page-content">{children}</main><footer className="app-footer"><span>© 2026 {t('companyName')}</span><span>{t('productBy')} <span className="footer-heart">✦</span></span></footer>
     </div>
@@ -591,9 +676,12 @@ function getErrorMessage(error: unknown): string {
 
 function CreateTaskPage({ profile }: { profile: Profile | null }) {
   const { t } = useTranslation();
+  const { taskId: editingTaskId } = useParams();
+  const isEditing = Boolean(editingTaskId);
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [formError, setFormError] = useState('');
+  const [initializedTaskId, setInitializedTaskId] = useState('');
   const [activeTab, setActiveTab] = useState<'assignment'|'customer'|'services'>('assignment');
   const [assignees, setAssignees] = useState<string[]>([]);
   const [assignedHours, setAssignedHours] = useState('');
@@ -601,6 +689,10 @@ function CreateTaskPage({ profile }: { profile: Profile | null }) {
   const [selectedServices, setSelectedServices] = useState<Record<string, { areaId: string; subtaskId: string; hours: string }>>({});
   const [selectedEquipment, setSelectedEquipment] = useState<Record<string, number>>({});
   const [customer, setCustomer] = useState({ customer_name: '', apartment_number: '', apartment_block: '', customer_address: '', customer_phone: '' });
+  const editingTaskQuery = useQuery<Task>({ queryKey:['task-edit',editingTaskId],enabled:Boolean(supabase&&editingTaskId),queryFn:async()=>{const {data,error}=await supabase!.from('tasks').select('*').eq('id',editingTaskId!).single();if(error)throw error;return data as Task;} });
+  const editingAssignmentsQuery = useQuery<Array<{profile_id:string;assigned_hours:number|null;worker_submitted_at?:string|null}>>({ queryKey:['task-edit-assignments',editingTaskId],enabled:Boolean(supabase&&editingTaskId),queryFn:async()=>{const {data,error}=await supabase!.from('task_assignments').select('profile_id,assigned_hours,worker_submitted_at').eq('task_id',editingTaskId!);if(error)throw error;return data??[];} });
+  const editingServicesQuery = useQuery<Array<{area_id:string;subtask_id:string|null;assigned_hours:number|null}>>({ queryKey:['task-edit-services',editingTaskId],enabled:Boolean(supabase&&editingTaskId),queryFn:async()=>{const {data,error}=await supabase!.from('task_service_selections').select('area_id,subtask_id,assigned_hours').eq('task_id',editingTaskId!);if(error)throw error;return data??[];} });
+  const editingEquipmentQuery = useQuery<Array<{equipment_id:string;quantity:number}>>({ queryKey:['task-edit-equipment',editingTaskId],enabled:Boolean(supabase&&editingTaskId),queryFn:async()=>{const {data,error}=await supabase!.from('task_equipment').select('equipment_id,quantity').eq('task_id',editingTaskId!);if(error)throw error;return data??[];} });
   const { data: people = [], isLoading } = useQuery({ queryKey: ['permitted-users', profile?.id], enabled: Boolean(supabase && profile && profile.role !== 'end_user'), queryFn: async () => {
     const { data, error } = await supabase!.from('profiles').select('id,full_name,username,employee_id').eq('role','end_user').eq('is_active',true).is('deleted_at',null).order('full_name');
     if (error) throw error; return data ?? [];
@@ -608,7 +700,18 @@ function CreateTaskPage({ profile }: { profile: Profile | null }) {
   const { data: areas=[] } = useQuery({ queryKey:['cleaning-areas'], enabled:Boolean(supabase), queryFn:async()=>{const {data,error}=await supabase!.from('cleaning_areas').select('id,name,sort_order').eq('is_active',true).order('sort_order').order('name');if(error)throw error;return data??[];} });
   const { data: subtasks=[] } = useQuery({ queryKey:['cleaning-subtasks'], enabled:Boolean(supabase), queryFn:async()=>{const {data,error}=await supabase!.from('cleaning_subtasks').select('id,area_id,name,sort_order').eq('is_active',true).order('sort_order').order('name');if(error)throw error;return data??[];} });
   const { data: equipment=[] } = useQuery({ queryKey:['cleaning-equipment'], enabled:Boolean(supabase), queryFn:async()=>{const {data,error}=await supabase!.from('cleaning_equipment').select('id,name').eq('is_active',true).order('name');if(error)throw error;return data??[];} });
-  const { register, handleSubmit, formState:{errors,isSubmitting} } = useForm<TaskFormValues>({ resolver:zodResolver(taskFormSchema), defaultValues:{reference:'',title:'',description:'',assignee:'',priority:'medium',startDate:new Date().toISOString().slice(0,10),dueDate:'',budget:'',currency:'EUR'} });
+  const { register, handleSubmit, reset, formState:{errors,isSubmitting} } = useForm<TaskFormValues>({ resolver:zodResolver(taskFormSchema), defaultValues:{reference:'',title:'',description:'',assignee:'',priority:'medium',startDate:new Date().toISOString().slice(0,10),dueDate:'',budget:'',currency:'EUR'} });
+  useEffect(()=>{
+    const task=editingTaskQuery.data;
+    if(!editingTaskId||!task||!editingAssignmentsQuery.isSuccess||!editingServicesQuery.isSuccess||!editingEquipmentQuery.isSuccess||initializedTaskId===editingTaskId)return;
+    reset({reference:task.reference,title:task.title,description:task.description,assignee:'',priority:task.priority==='low'||task.priority==='medium'||task.priority==='high'||task.priority==='urgent'?task.priority:'medium',startDate:task.start_date??task.due_date,dueDate:task.due_date,budget:task.budget_limit==null?'':String(task.budget_limit),currency:task.currency});
+    setAssignedHours(task.assigned_hours==null?'':String(task.assigned_hours));
+    setAssignees(editingAssignmentsQuery.data.map(assignment=>assignment.profile_id));
+    setSelectedServices(Object.fromEntries(editingServicesQuery.data.map(service=>[service.subtask_id??service.area_id,{areaId:service.area_id,subtaskId:service.subtask_id??'',hours:service.assigned_hours==null?'':String(service.assigned_hours)}])));
+    setSelectedEquipment(Object.fromEntries(editingEquipmentQuery.data.map(item=>[item.equipment_id,item.quantity])));
+    setCustomer({customer_name:task.customer_name??'',apartment_number:task.apartment_number??'',apartment_block:task.apartment_block??'',customer_address:task.customer_address??'',customer_phone:task.customer_phone??''});
+    setInitializedTaskId(editingTaskId);
+  },[editingTaskId,editingTaskQuery.data,editingAssignmentsQuery.data,editingAssignmentsQuery.isSuccess,editingServicesQuery.data,editingServicesQuery.isSuccess,editingEquipmentQuery.data,editingEquipmentQuery.isSuccess,initializedTaskId,reset]);
   const saveTask = async (values: TaskFormValues, draft: boolean) => {
     setFormError('');
     if (!supabase) { setFormError(t('backendMissing')); return; }
@@ -621,16 +724,20 @@ function CreateTaskPage({ profile }: { profile: Profile | null }) {
     if (Object.values(selectedServices).some(service=>service.hours&&(!/^\d+(\.\d{1,2})?$/.test(service.hours)||Number(service.hours)<=0))) { setActiveTab('services'); setFormError(t('invalidAssignedHours')); return; }
     const serviceSelections = Object.values(selectedServices).map(service=>({area_id:service.areaId,subtask_id:service.subtaskId||null,assigned_hours:service.hours?Number(service.hours):null}));
     const equipmentItems = Object.entries(selectedEquipment).filter(([,quantity])=>quantity>0).map(([equipment_id,quantity])=>({equipment_id,quantity}));
-    const {data,error}=await supabase.rpc('create_cleaning_task',{
+    const taskArguments={
       task_reference:values.reference,task_title:values.title,task_description:values.description,
       task_priority:values.priority,task_start:values.startDate,task_due:values.dueDate,
-      task_assigned_hours:assignedHours?Number(assignedHours):null,assignee_ids:draft?[]:assignees,service_selections:serviceSelections,
-      equipment_items:equipmentItems,customer,task_budget:values.budget?values.budget:null,task_currency:values.currency,task_is_draft:draft
-    });
+      task_assigned_hours:assignedHours?Number(assignedHours):null,assignee_ids:assignees,service_selections:serviceSelections,
+      equipment_items:equipmentItems,customer,task_budget:values.budget?values.budget:null,task_currency:values.currency
+    };
+    const {data,error}=isEditing
+      ? await supabase.rpc('update_cleaning_task',{target_task:editingTaskId!,expected_version:editingTaskQuery.data?.version,...taskArguments})
+      : await supabase.rpc('create_cleaning_task',{...taskArguments,assignee_ids:draft?[]:assignees,task_is_draft:draft});
     if(error){
-      console.error('Task creation failed',error);
+      console.error(isEditing?'Task update failed':'Task creation failed',error);
+      if(error.code==='40001'){setFormError(t('taskConflict'));return;}
       if(isDuplicateTaskReferenceError(error)){setActiveTab('assignment');setFormError(t('duplicateTaskReference'));return;}
-      setFormError(`${t('taskValidationError')} ${error.message}`);return;
+      setFormError(`${t(isEditing?'taskEditFailed':'taskValidationError')} ${error.message}`);return;
     }
     try {
       if (assignmentPhotos.length) await uploadTaskPhotos(data as Task, assignmentPhotos, 'assignment');
@@ -639,7 +746,18 @@ function CreateTaskPage({ profile }: { profile: Profile | null }) {
       navigate(`/app/tasks/${data.id}`, { state: { photoUploadFailed: true } });
       return;
     }
-    await qc.invalidateQueries({queryKey:['tasks']});
+    await Promise.all([
+      qc.invalidateQueries({queryKey:['tasks']}),
+      qc.invalidateQueries({queryKey:['task-register']}),
+      qc.invalidateQueries({queryKey:['task-calendar']}),
+      qc.invalidateQueries({queryKey:['dashboard-metrics']}),
+      qc.invalidateQueries({queryKey:['report-assignments']}),
+      qc.invalidateQueries({queryKey:['task',editingTaskId]}),
+      qc.invalidateQueries({queryKey:['task-assignments',editingTaskId]}),
+      qc.invalidateQueries({queryKey:['task-services',editingTaskId]}),
+      qc.invalidateQueries({queryKey:['task-equipment',editingTaskId]}),
+      qc.invalidateQueries({queryKey:['task-edit',editingTaskId]}),
+    ]);
     navigate(`/app/tasks/${data.id}`);
   };
   const handleInvalid = (invalid: FieldErrors<TaskFormValues>) => {
@@ -649,6 +767,10 @@ function CreateTaskPage({ profile }: { profile: Profile | null }) {
   };
   const submit = handleSubmit(values => saveTask(values, false), handleInvalid);
   const saveDraft = handleSubmit(values => saveTask(values, true), handleInvalid);
+  if(isEditing&&(editingTaskQuery.isLoading||editingAssignmentsQuery.isLoading||editingServicesQuery.isLoading||editingEquipmentQuery.isLoading))return <div className="loading-state">{t('loading')}</div>;
+  if(isEditing&&(editingTaskQuery.isError||editingAssignmentsQuery.isError||editingServicesQuery.isError||editingEquipmentQuery.isError||!editingTaskQuery.data))return <div className="panel empty-state">{t('connectionError')}</div>;
+  if(isEditing&&(!profile||profile.role==='end_user'||(profile.role==='assigner'&&editingTaskQuery.data?.assigner_id!==profile.id)))return <div className="panel empty-state">{t('noPermission')}</div>;
+  if(isEditing&&(!['pending','in_progress','on_hold','skipped','returned'].includes(editingTaskQuery.data?.status??'')||editingAssignmentsQuery.data?.some(assignment=>assignment.worker_submitted_at)))return <div className="panel empty-state">{t('taskEditingUnavailable')}</div>;
   const toggleAssignee=(id:string)=>setAssignees(current=>current.includes(id)?current.filter(value=>value!==id):[...current,id]);
   const toggleSubtask=(areaId:string,subtaskId:string)=>{
     const key=subtaskId;
@@ -659,7 +781,7 @@ function CreateTaskPage({ profile }: { profile: Profile | null }) {
     });
   };
   return <><div className="detail-back"><Link to="/app/tasks">← {t('myTasks')}</Link></div>
-    <div className="page-heading"><div><div className="date-overline"><Plus size={14}/>{t('createTask')}</div><h1>{t('newTask')}</h1><p>{t('createTaskSubtitle')}</p></div></div>
+    <div className="page-heading"><div><div className="date-overline"><Plus size={14}/>{t(isEditing?'editTask':'createTask')}</div><h1>{t(isEditing?'editTask':'newTask')}</h1><p>{t(isEditing?'editTaskSubtitle':'createTaskSubtitle')}</p></div></div>
     <form className="panel create-form task-wizard" onSubmit={event=>void submit(event)} noValidate>
       {formError&&<div className="form-error form-summary" role="alert">{formError}</div>}
       <div className="wizard-tabs" role="tablist">
@@ -691,7 +813,7 @@ function CreateTaskPage({ profile }: { profile: Profile | null }) {
         <section className="equipment-section"><h2>{t('equipment')}</h2><p>{t('equipmentHint')}</p><div className="equipment-picker">{equipment.map(item=>                <label className="equipment-option" key={item.id}><input type="checkbox" checked={(selectedEquipment[item.id]??0)>0} onChange={e=>setSelectedEquipment({...selectedEquipment,[item.id]:e.target.checked?1:0})}/><span>{item.name}</span>{(selectedEquipment[item.id]??0)>0&&<input type="number" min="1" step="1" value={selectedEquipment[item.id]??1} onChange={e=>setSelectedEquipment({...selectedEquipment,[item.id]:Math.max(1,Number(e.target.value))})}/>}</label>)}</div></section>
       </div>}
       {activeTab==='assignment'&&<section className="assignment-section photo-upload-section"><h2>{t('assignmentPhotos')}</h2><p>{t('assignmentPhotosHint')}</p><input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={event=>setAssignmentPhotos(Array.from(event.target.files??[]))}/>{assignmentPhotos.length>0&&<small>{t('photosSelected', {count:assignmentPhotos.length})}</small>}</section>}
-      <div className="wizard-actions"><button type="button" className="secondary-button" onClick={()=>activeTab==='assignment'?setActiveTab('assignment'):setActiveTab(activeTab==='services'?'customer':'assignment')}>{t('back')}</button><div>{activeTab!=='services'?<button type="button" className="primary-button" onClick={()=>setActiveTab(activeTab==='assignment'?'customer':'services')}>{t('continue')} <ArrowRight size={15}/></button>:<><Link className="secondary-button" to="/app/tasks">{t('cancel')}</Link><button type="button" className="secondary-button" disabled={isSubmitting} onClick={()=>void saveDraft()}>{t('saveDraft')}</button><button className="primary-button" disabled={isSubmitting}>{isSubmitting?t('saving'):t('assignTask')} <ArrowRight size={15}/></button></>}</div></div>
+      <div className="wizard-actions"><button type="button" className="secondary-button" onClick={()=>activeTab==='assignment'?setActiveTab('assignment'):setActiveTab(activeTab==='services'?'customer':'assignment')}>{t('back')}</button><div>{activeTab!=='services'?<button type="button" className="primary-button" onClick={()=>setActiveTab(activeTab==='assignment'?'customer':'services')}>{t('continue')} <ArrowRight size={15}/></button>:<><Link className="secondary-button" to="/app/tasks">{t('cancel')}</Link>{!isEditing&&<button type="button" className="secondary-button" disabled={isSubmitting} onClick={()=>void saveDraft()}>{t('saveDraft')}</button>}<button className="primary-button" disabled={isSubmitting}>{isSubmitting?t('saving'):t(isEditing?'saveChanges':'assignTask')} <ArrowRight size={15}/></button></>}</div></div>
     </form></>;
 }
 
@@ -825,8 +947,9 @@ function TaskDetail({ profile }: { profile: Profile | null }) {
   if (taskQuery.isLoading) return <div className="loading-state">{t('loading')}</div>;
   if (!task) return <div className="panel empty-state">{t('connectionError')}</div>;
   const assignments=assignmentsQuery.data??[];const currentAssignment=assignments.find(assignment=>assignment.profile_id===profile?.id);const currentWorkerSubmitted=Boolean(currentAssignment?.worker_submitted_at);const services=servicesQuery.data??[];const serviceLogs=serviceLogsQuery.data??[];const taskPhotos=photosQuery.data??[];const assignmentPhotos=taskPhotos.filter(photo=>photo.photo_type==='assignment');const completionPhotos=taskPhotos.filter(photo=>photo.photo_type==='completion');const equipment=equipmentQuery.data??[];
+  const canEditTask=Boolean(assignmentsQuery.isSuccess&&profile&&profile.role!=='end_user'&&(profile.role==='super_admin'||task.assigner_id===profile.id)&&['pending','in_progress','on_hold','skipped','returned'].includes(task.status)&&!assignments.some(assignment=>assignment.worker_submitted_at));
   const isOwner = profile?.id === task.assignee_id || assignments.some(assignment => assignment.profile_id === profile?.id); const total = sumMoney(expenseQuery.data?.map(line => String(line.line_total)) ?? []); const budget = task.budget_limit; const balance = budgetBalance(budget, total); const overBudget = budget !== null && new Decimal(total).greaterThan(budget);
-  return <><div className="detail-back"><Link to="/app/tasks">← {t('myTasks')}</Link></div><div className="page-heading detail-heading"><div><div className="date-overline">{task.reference} <span>·</span> {task.is_draft?t('draftTask'):t('taskDetails')}</div><h1>{task.title}</h1><p>{task.description}</p></div>{task.is_draft?<span className="draft-badge">{t('draft')}</span>:<StatusPill status={task.status} />}</div><div className="detail-grid"><div className="panel detail-main"><div className="panel-heading"><div><h2>{t('expenseTotal')}</h2><span>{t('expenseSubtitle')}</span></div>{!task.is_draft&&isOwner && ['pending','in_progress','on_hold','skipped','returned'].includes(task.status) && <button className="subtle-button" onClick={() => setExpenseOpen(!expenseOpen)}><Plus size={15} />{t('addExpense')}</button>}</div>
+  return <><div className="detail-back"><Link to="/app/tasks">← {t('myTasks')}</Link></div><div className="page-heading detail-heading"><div><div className="date-overline">{task.reference} <span>·</span> {task.is_draft?t('draftTask'):t('taskDetails')}</div><h1>{task.title}</h1><p>{task.description}</p></div><div className="task-heading-actions">{canEditTask&&<Link className="subtle-button" to={`/app/tasks/${task.id}/edit`}><Pencil size={15}/>{t('editTask')}</Link>}{task.is_draft?<span className="draft-badge">{t('draft')}</span>:<StatusPill status={task.status} />}</div></div><div className="detail-grid"><div className="panel detail-main"><div className="panel-heading"><div><h2>{t('expenseTotal')}</h2><span>{t('expenseSubtitle')}</span></div>{!task.is_draft&&isOwner && ['pending','in_progress','on_hold','skipped','returned'].includes(task.status) && <button className="subtle-button" onClick={() => setExpenseOpen(!expenseOpen)}><Plus size={15} />{t('addExpense')}</button>}</div>
     {expenseOpen && <form className="expense-form" onSubmit={event => void saveExpense(event)}><div className="expense-form-grid"><label>{t('date')}<input type="date" value={expenseDate} onChange={e => setExpenseDate(e.target.value)} required /></label><label>{t('category')}<input value={category} onChange={e => setCategory(e.target.value)} minLength={2} maxLength={80} required /></label><label className="expense-wide">{t('description')}<input value={expenseDescription} onChange={e => setExpenseDescription(e.target.value)} minLength={3} maxLength={300} required /></label><label>{t('quantity')}<input inputMode="decimal" value={quantity} onChange={e => setQuantity(e.target.value)} required /></label><label>{t('unitAmount')}<input inputMode="decimal" value={unitAmount} onChange={e => setUnitAmount(e.target.value)} required /></label><label className="expense-wide">{t('proof')}<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" capture="environment" onChange={e => setProofFile(e.target.files?.[0] ?? null)} required /><small>{t('proofLimit')}</small></label></div><div className="expense-live-total">{t('lineTotal')} <b>{formatMoney(calculateLineTotal(quantity || '0', unitAmount || '0'), task.currency, 'en-GB')}</b></div><div className="expense-form-actions"><button type="button" className="secondary-button" onClick={() => setExpenseOpen(false)}>{t('cancel')}</button><button className="primary-button" disabled={busy}>{busy ? t('saving') : t('save')}</button></div></form>}
     <div className="task-operation-summary">
       <section><h3>{t('customer')}</h3><p><b>{task.customer_name || '—'}</b></p><p>{task.apartment_block ? `${t('apartmentBlock')}: ${task.apartment_block}` : ''}{task.apartment_number ? ` · ${t('apartmentNumber')}: ${task.apartment_number}` : ''}</p><p>{task.customer_address || '—'}</p><p>{task.customer_phone || '—'}</p></section>
@@ -899,6 +1022,7 @@ export default function App() {
       const taskDetailQueryPrefixes = [
         ['task'],
         ['task-assignments'],
+        ['task-services'],
         ['task-service-logs'],
         ['task-photos'],
         ['task-equipment'],
@@ -934,6 +1058,17 @@ export default function App() {
         filter: `organisation_id=eq.${profile.organisation_id}`,
       }, onTaskRelatedChange);
     }
+    channel.on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'notifications',
+      filter: `recipient_id=eq.${profile.id}`,
+    }, () => {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['notifications', profile.id] }),
+        queryClient.invalidateQueries({ queryKey: ['notification-unread-count', profile.id] }),
+      ]);
+    });
     channel.subscribe((status, error) => {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         console.error('Task updates realtime subscription failed', error ?? status);
@@ -945,7 +1080,7 @@ export default function App() {
   if (!ready) return <div className="splash"><img className="splash-logo" src={axaLogo} alt="" /><span>AXA Cleaning</span></div>;
   if (!user) return <Routes><Route path="/forgot-password" element={<ForgotPassword />} /><Route path="*" element={<Login />} /></Routes>;
   if (profile?.must_reset_password || location.pathname === '/reset-password') return <ResetPassword onComplete={() => setProfile(current => current ? { ...current, must_reset_password: false } : current)} />;
-  return <AppShell user={user} profile={profile} onSignOut={() => void signOut()}><Routes><Route path="/app" element={<Dashboard profile={profile} />} /><Route path="/app/tasks" element={<TaskListPage profile={profile} />} /><Route path="/app/tasks/new" element={<CreateTaskPage profile={profile} />} /><Route path="/app/tasks/:taskId" element={<TaskPage profile={profile}/>} /><Route path="/app/calendar" element={profile && profile.role !== 'end_user' ? <TaskCalendarPage profile={profile} /> : <div className="panel empty-state">{t('noPermission')}</div>} /><Route path="/app/reviews" element={<ReviewQueue profile={profile} />} /><Route path="/app/people" element={profile?.role === 'super_admin' ? <PeoplePage profile={profile} /> : <div className="panel empty-state">{t('noPermission')}</div>} /><Route path="/app/reports" element={<ReportsPage profile={profile} />} /><Route path="/app/audit" element={profile?.role === 'super_admin' ? <AuditPage /> : <div className="panel empty-state">{t('noPermission')}</div>} /><Route path="/app/settings" element={<SettingsPage profile={profile} />} /><Route path="*" element={<Dashboard profile={profile} />} /></Routes></AppShell>;
+  return <AppShell user={user} profile={profile} onSignOut={() => void signOut()}><Routes><Route path="/app" element={<Dashboard profile={profile} />} /><Route path="/app/tasks" element={<TaskListPage profile={profile} />} /><Route path="/app/tasks/new" element={<CreateTaskPage profile={profile} />} /><Route path="/app/tasks/:taskId/edit" element={<CreateTaskPage profile={profile} />} /><Route path="/app/tasks/:taskId" element={<TaskPage profile={profile}/>} /><Route path="/app/calendar" element={profile && profile.role !== 'end_user' ? <TaskCalendarPage profile={profile} /> : <div className="panel empty-state">{t('noPermission')}</div>} /><Route path="/app/reviews" element={<ReviewQueue profile={profile} />} /><Route path="/app/people" element={profile?.role === 'super_admin' ? <PeoplePage profile={profile} /> : <div className="panel empty-state">{t('noPermission')}</div>} /><Route path="/app/reports" element={<ReportsPage profile={profile} />} /><Route path="/app/audit" element={profile?.role === 'super_admin' ? <AuditPage /> : <div className="panel empty-state">{t('noPermission')}</div>} /><Route path="/app/settings" element={<SettingsPage profile={profile} />} /><Route path="*" element={<Dashboard profile={profile} />} /></Routes></AppShell>;
 }
 
 function ForgotPassword() {
