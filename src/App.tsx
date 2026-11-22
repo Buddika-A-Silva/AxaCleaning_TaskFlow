@@ -12,6 +12,7 @@ import Decimal from 'decimal.js';
 import { budgetBalance, calculateLineTotal, formatMoney, sumMoney } from './lib/money';
 import { toCsv } from './lib/csv';
 import { formatDateKey, formatMonthKey, getMonthCalendarDays, parseMonthKey, taskOccursOnCalendarDay } from './lib/calendar';
+import { isDuplicateTaskReferenceError } from './lib/task-errors';
 import axaLogo from './LOGO.jpeg';
 
 function Brand({ light = false, compact = false }: { light?: boolean; compact?: boolean }) {
@@ -623,7 +624,11 @@ function CreateTaskPage({ profile }: { profile: Profile | null }) {
       task_assigned_hours:assignedHours?Number(assignedHours):null,assignee_ids:draft?[]:assignees,service_selections:serviceSelections,
       equipment_items:equipmentItems,customer,task_budget:values.budget?values.budget:null,task_currency:values.currency,task_is_draft:draft
     });
-    if(error){console.error('Task creation failed',error);setFormError(`${t('taskValidationError')} ${error.message}`);return;}
+    if(error){
+      console.error('Task creation failed',error);
+      if(isDuplicateTaskReferenceError(error)){setActiveTab('assignment');setFormError(t('duplicateTaskReference'));return;}
+      setFormError(`${t('taskValidationError')} ${error.message}`);return;
+    }
     try {
       if (assignmentPhotos.length) await uploadTaskPhotos(data as Task, assignmentPhotos, 'assignment');
     } catch {
