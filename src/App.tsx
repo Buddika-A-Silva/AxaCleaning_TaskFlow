@@ -623,7 +623,7 @@ function CreateTaskPage({ profile }: { profile: Profile | null }) {
       task_assigned_hours:assignedHours?Number(assignedHours):null,assignee_ids:draft?[]:assignees,service_selections:serviceSelections,
       equipment_items:equipmentItems,customer,task_budget:values.budget?values.budget:null,task_currency:values.currency,task_is_draft:draft
     });
-    if(error){setFormError(t('taskValidationError'));return;}
+    if(error){console.error('Task creation failed',error);setFormError(`${t('taskValidationError')} ${error.message}`);return;}
     try {
       if (assignmentPhotos.length) await uploadTaskPhotos(data as Task, assignmentPhotos, 'assignment');
     } catch {
