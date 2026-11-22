@@ -13,6 +13,7 @@ import { budgetBalance, calculateLineTotal, formatMoney, sumMoney } from './lib/
 import { toCsv } from './lib/csv';
 import { formatDateKey, formatMonthKey, getMonthCalendarDays, parseMonthKey, taskOccursOnCalendarDay } from './lib/calendar';
 import { isDuplicateTaskReferenceError } from './lib/task-errors';
+import { hasCompletionPhoto } from './lib/task-completion';
 import axaLogo from './LOGO.jpeg';
 
 function Brand({ light = false, compact = false }: { light?: boolean; compact?: boolean }) {
@@ -759,7 +760,7 @@ function TaskDetail({ profile }: { profile: Profile | null }) {
         return !log||!log.is_completed||log.actual_hours==null||(service.assigned_hours!=null&&Number(log.actual_hours)>Number(service.assigned_hours));
       });
       if (mismatched && reason.trim().length < 3) { setNotice(t('hoursMismatchComment')); return; }
-      if (!(photosQuery.data??[]).some(photo=>photo.photo_type==='completion'&&photo.uploaded_by===profile?.id)&&!completionFiles.length) { setNotice(t('completionPhotoRequired')); return; }
+      if (!hasCompletionPhoto(photosQuery.data??[])&&!completionFiles.length) { setNotice(t('completionPhotoRequired')); return; }
     }
     if (next === 'submitted' && !window.confirm(t('submitConfirm'))) return;
     setBusy(true); setNotice('');
@@ -865,46 +866,49 @@ export default function App() {
     if (!client || !profile) return;
     const channel = client.channel(`task-updates-${profile.id}`);
     const invalidateTaskData = (taskId?: string) => {
+      const taskDetailQueryPrefixes = [
+        ['task'],
+        ['task-assignments'],
+        ['task-service-logs'],
+        ['task-photos'],
+        ['task-equipment'],
+        ['expenses'],
+        ['proofs'],
+        ['task-history'],
+      ];
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: ['tasks'] }),
         queryClient.invalidateQueries({ queryKey: ['task-register'] }),
         queryClient.invalidateQueries({ queryKey: ['task-calendar'] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard-metrics'] }),
         queryClient.invalidateQueries({ queryKey: ['report-assignments'] }),
-        ...(taskId ? [
-          queryClient.invalidateQueries({ queryKey: ['task', taskId] }),
-          queryClient.invalidateQueries({ queryKey: ['task-assignments', taskId] }),
-        ] : []),
+        queryClient.invalidateQueries({ queryKey: ['report-service-hours'] }),
+        ...taskDetailQueryPrefixes.map(prefix =>
+          queryClient.invalidateQueries({ queryKey: taskId ? [...prefix, taskId] : prefix }),
+        ),
       ]);
     };
-    channel
-      .on('postgres_changes', {
+    const taskIdFromRow = (row: unknown) => {
+      if (typeof row !== 'object' || row === null) return undefined;
+      const record = row as { id?: unknown; task_id?: unknown };
+      return typeof record.task_id === 'string' ? record.task_id : typeof record.id === 'string' ? record.id : undefined;
+    };
+    const onTaskRelatedChange = (payload: { new: unknown; old: unknown }) => {
+      invalidateTaskData(taskIdFromRow(payload.new) ?? taskIdFromRow(payload.old));
+    };
+    for (const table of ['tasks', 'task_assignments', 'task_service_logs', 'task_photos', 'task_equipment', 'expense_lines', 'expense_proofs', 'task_status_history']) {
+      channel.on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'tasks',
+        table,
         filter: `organisation_id=eq.${profile.organisation_id}`,
-      }, payload => {
-        const row = payload.new as { id?: unknown };
-        const previousRow = payload.old as { id?: unknown };
-        const taskId = typeof row.id === 'string' ? row.id : typeof previousRow.id === 'string' ? previousRow.id : undefined;
-        invalidateTaskData(taskId);
-      })
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'task_assignments',
-        filter: `organisation_id=eq.${profile.organisation_id}`,
-      }, payload => {
-        const row = payload.new as { task_id?: unknown };
-        const previousRow = payload.old as { task_id?: unknown };
-        const taskId = typeof row.task_id === 'string' ? row.task_id : typeof previousRow.task_id === 'string' ? previousRow.task_id : undefined;
-        invalidateTaskData(taskId);
-      })
-      .subscribe((status, error) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.error('Task updates realtime subscription failed', error ?? status);
-        }
-      });
+      }, onTaskRelatedChange);
+    }
+    channel.subscribe((status, error) => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.error('Task updates realtime subscription failed', error ?? status);
+      }
+    });
     return () => { void client.removeChannel(channel); };
   }, [profile, queryClient]);
   const signOut = async () => { await supabase?.auth.signOut(); setUser(null); setProfile(null); queryClient.clear(); navigate('/login'); };
